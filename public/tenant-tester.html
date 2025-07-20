@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multi-Tenant Chatbot Tester</title>
+
+    <!-- Dynamic tenant ID - will be updated by JavaScript -->
+    <meta
+      name="chatbot-tenant-id"
+      content="687d073374f2f8e6e27e032d"
+      id="tenant-meta"
+    />
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .header {
+        text-align: center;
+        color: white;
+        margin-bottom: 2rem;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .tenant-selector {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      }
+
+      .selector-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        color: #333;
+        text-align: center;
+      }
+
+      .tenant-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+
+      .tenant-option {
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 1.5rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: #f9fafb;
+      }
+
+      .tenant-option:hover {
+        border-color: #3b82f6;
+        background: #eff6ff;
+      }
+
+      .tenant-option.active {
+        border-color: #10b981;
+        background: #ecfdf5;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+      }
+
+      .tenant-name {
+        font-size: 1.2rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .tenant-details {
+        font-size: 0.9rem;
+        color: #666;
+        margin-bottom: 0.5rem;
+      }
+
+      .tenant-id {
+        font-family: "Courier New", monospace;
+        background: #f3f4f6;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        color: #374151;
+      }
+
+      .color-preview {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .current-config {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      }
+
+      .config-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        color: #333;
+        text-align: center;
+      }
+
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+      }
+
+      .config-item {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #3b82f6;
+      }
+
+      .config-label {
+        font-weight: bold;
+        color: #374151;
+        margin-bottom: 0.5rem;
+      }
+
+      .config-value {
+        color: #6b7280;
+        word-break: break-word;
+      }
+
+      .chat-preview {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      }
+
+      .preview-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        color: #333;
+        text-align: center;
+      }
+
+      .preview-info {
+        background: #e0f2fe;
+        border: 1px solid #81d4fa;
+        color: #01579b;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        text-align: center;
+      }
+
+      .manual-input {
+        margin-top: 2rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+      }
+
+      .manual-input h4 {
+        margin-bottom: 0.5rem;
+        color: #374151;
+      }
+
+      .input-group {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+      }
+
+      .input-group input {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-family: "Courier New", monospace;
+      }
+
+      .input-group button {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+
+      .input-group button:hover {
+        background: #2563eb;
+      }
+
+      .status {
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        font-weight: bold;
+      }
+
+      .status.loading {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fbbf24;
+      }
+
+      .status.success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #34d399;
+      }
+
+      .status.error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #f87171;
+      }
+
+      /* Force chatbot widget visibility */
+      #chatbot-widget {
+        position: fixed !important;
+        bottom: 20px !important;
+        right: 20px !important;
+        z-index: 9999 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: block !important;
+      }
+
+      .instructions {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+      }
+
+      .instructions h3 {
+        color: #333;
+        margin-bottom: 1rem;
+      }
+
+      .instructions ol {
+        color: #666;
+        padding-left: 1.5rem;
+      }
+
+      .instructions li {
+        margin-bottom: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🤖 Multi-Tenant Chatbot Tester</h1>
+        <p>
+          Switch between different tenant configurations and see the chatbot
+          adapt in real-time
+        </p>
+      </div>
+
+      <div class="tenant-selector">
+        <div class="selector-title">📋 Select Tenant</div>
+        <div class="tenant-options">
+          <div
+            class="tenant-option"
+            data-tenant-id="687d067f74f2f8e6e27e032c"
+            data-tenant-name="Majestic Escape Resort"
+          >
+            <div class="tenant-name">
+              🏨 Majestic Escape Resort
+              <div class="color-preview" style="background: #8b5a2b"></div>
+            </div>
+            <div class="tenant-details">
+              <strong>Bot:</strong> Majestic Assistant<br />
+              <strong>Theme:</strong> Luxury Hotel Concierge<br />
+              <strong>Colors:</strong> Gold & Brown
+            </div>
+            <div class="tenant-id">687d067f74f2f8e6e27e032c</div>
+          </div>
+
+          <div
+            class="tenant-option"
+            data-tenant-id="687d073374f2f8e6e27e032d"
+            data-tenant-name="CodeMax Solutions"
+          >
+            <div class="tenant-name">
+              💻 CodeMax Solutions
+              <div class="color-preview" style="background: #1e40af"></div>
+            </div>
+            <div class="tenant-details">
+              <strong>Bot:</strong> CodeMax Bot<br />
+              <strong>Theme:</strong> Technical Support<br />
+              <strong>Colors:</strong> Professional Blue
+            </div>
+            <div class="tenant-id">687d073374f2f8e6e27e032d</div>
+          </div>
+
+          <div
+            class="tenant-option active"
+            data-tenant-id="687d104974f2f8e6e27e032e"
+            data-tenant-name="MuscleBlaze Fitness"
+          >
+            <div class="tenant-name">
+              💪 MuscleBlaze Fitness
+              <div class="color-preview" style="background: #dc2626"></div>
+            </div>
+            <div class="tenant-details">
+              <strong>Bot:</strong> Fitness Coach AI<br />
+              <strong>Theme:</strong> Fitness & Nutrition<br />
+              <strong>Colors:</strong> Energetic Red
+            </div>
+            <div class="tenant-id">687d104974f2f8e6e27e032e</div>
+          </div>
+        </div>
+
+        <div class="manual-input">
+          <h4>🔧 Or Enter Custom Tenant ID:</h4>
+          <div class="input-group">
+            <input
+              type="text"
+              id="custom-tenant-id"
+              placeholder="Enter tenant ID (e.g., 687d104974f2f8e6e27e032e)"
+            />
+            <button onclick="loadCustomTenant()">Load Tenant</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="current-config">
+        <div class="config-title">⚙️ Current Tenant Configuration</div>
+        <div id="config-status" class="status loading">
+          Loading tenant configuration...
+        </div>
+        <div class="config-grid" id="config-grid" style="display: none">
+          <div class="config-item">
+            <div class="config-label">Tenant ID</div>
+            <div class="config-value" id="config-tenant-id">-</div>
+          </div>
+          <div class="config-item">
+            <div class="config-label">Company Name</div>
+            <div class="config-value" id="config-company-name">-</div>
+          </div>
+          <div class="config-item">
+            <div class="config-label">Bot Name</div>
+            <div class="config-value" id="config-bot-name">-</div>
+          </div>
+          <div class="config-item">
+            <div class="config-label">Primary Color</div>
+            <div class="config-value" id="config-primary-color">-</div>
+          </div>
+          <div class="config-item">
+            <div class="config-label">Secondary Color</div>
+            <div class="config-value" id="config-secondary-color">-</div>
+          </div>
+          <div class="config-item">
+            <div class="config-label">Welcome Message</div>
+            <div class="config-value" id="config-welcome-message">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-preview">
+        <div class="preview-title">💬 Chatbot Preview</div>
+        <div class="preview-info">
+          The chatbot widget will appear in the bottom-right corner with the
+          selected tenant's branding and configuration. Click the colored circle
+          to open the chat and test the tenant-specific responses!
+        </div>
+        <div id="chat-status" class="status loading">
+          Initializing chatbot...
+        </div>
+      </div>
+
+      <div class="instructions">
+        <h3>📖 How to Use:</h3>
+        <ol>
+          <li>
+            <strong>Select a Tenant:</strong> Click on any tenant card above to
+            switch configurations
+          </li>
+          <li>
+            <strong>Custom Tenant:</strong> Enter a custom tenant ID in the
+            input field and click "Load Tenant"
+          </li>
+          <li>
+            <strong>View Configuration:</strong> See the current tenant's
+            settings in the configuration panel
+          </li>
+          <li>
+            <strong>Test Chatbot:</strong> Look for the colored circle in the
+            bottom-right corner
+          </li>
+          <li>
+            <strong>Chat:</strong> Click the circle to open the chat and test
+            tenant-specific responses
+          </li>
+          <li>
+            <strong>Real-time Updates:</strong> The chatbot automatically
+            reloads when you switch tenants
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <script>
+      let currentTenantId = "687d104974f2f8e6e27e032e";
+      let chatbotInitialized = false;
+
+      // Tenant selection handling
+      document.querySelectorAll(".tenant-option").forEach((option) => {
+        option.addEventListener("click", () => {
+          const tenantId = option.dataset.tenantId;
+          const tenantName = option.dataset.tenantName;
+          selectTenant(tenantId, tenantName, option);
+        });
+      });
+
+      function selectTenant(tenantId, tenantName, optionElement) {
+        // Update active state
+        document
+          .querySelectorAll(".tenant-option")
+          .forEach((opt) => opt.classList.remove("active"));
+        optionElement.classList.add("active");
+
+        // Update tenant ID
+        currentTenantId = tenantId;
+        document
+          .getElementById("tenant-meta")
+          .setAttribute("content", tenantId);
+        document.getElementById("custom-tenant-id").value = tenantId;
+
+        // Load tenant configuration
+        loadTenantConfig(tenantId);
+
+        // Reinitialize chatbot
+        reinitializeChatbot();
+      }
+
+      function loadCustomTenant() {
+        const customId = document
+          .getElementById("custom-tenant-id")
+          .value.trim();
+        if (!customId) {
+          alert("Please enter a tenant ID");
+          return;
+        }
+
+        // Remove active state from preset options
+        document
+          .querySelectorAll(".tenant-option")
+          .forEach((opt) => opt.classList.remove("active"));
+
+        // Update tenant ID
+        currentTenantId = customId;
+        document
+          .getElementById("tenant-meta")
+          .setAttribute("content", customId);
+
+        // Load tenant configuration
+        loadTenantConfig(customId);
+
+        // Reinitialize chatbot
+        reinitializeChatbot();
+      }
+
+      async function loadTenantConfig(tenantId) {
+        const statusEl = document.getElementById("config-status");
+        const gridEl = document.getElementById("config-grid");
+
+        statusEl.className = "status loading";
+        statusEl.textContent = "Loading tenant configuration...";
+        gridEl.style.display = "none";
+
+        try {
+          const response = await fetch("/api/chatbot/init", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tenantId: tenantId,
+              domain: window.location.hostname,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+
+            // Update configuration display
+            document.getElementById("config-tenant-id").textContent = tenantId;
+            document.getElementById("config-company-name").textContent =
+              data.config.companyName || "Not set";
+            document.getElementById("config-bot-name").textContent =
+              data.config.botName || "AI Assistant";
+            document.getElementById("config-primary-color").textContent =
+              data.config.primaryColor || "#3B82F6";
+            document.getElementById("config-secondary-color").textContent =
+              data.config.secondaryColor || "#1E40AF";
+            document.getElementById("config-welcome-message").textContent =
+              data.config.welcomeMessage || "Hello! How can I help you today?";
+
+            statusEl.className = "status success";
+            statusEl.textContent =
+              "✅ Tenant configuration loaded successfully!";
+            gridEl.style.display = "grid";
+          } else {
+            const errorText = await response.text();
+            statusEl.className = "status error";
+            statusEl.textContent = `❌ Failed to load tenant: ${response.status} - ${errorText}`;
+          }
+        } catch (error) {
+          statusEl.className = "status error";
+          statusEl.textContent = `❌ Error loading tenant: ${error.message}`;
+        }
+      }
+
+      function reinitializeChatbot() {
+        const chatStatusEl = document.getElementById("chat-status");
+
+        // Remove existing chatbot widget if present
+        const existingWidget = document.getElementById("chatbot-widget");
+        if (existingWidget) {
+          existingWidget.remove();
+        }
+
+        // Remove existing embed script
+        const existingScript = document.querySelector('script[src*="/embed"]');
+        if (existingScript) {
+          existingScript.remove();
+        }
+
+        chatStatusEl.className = "status loading";
+        chatStatusEl.textContent =
+          "🔄 Reloading chatbot with new tenant configuration...";
+
+        // Add new embed script with a slight delay to ensure clean reload
+        setTimeout(() => {
+          const script = document.createElement("script");
+          script.src = "/embed?t=" + Date.now(); // Add timestamp to prevent caching
+          script.defer = true;
+          script.onload = () => {
+            chatStatusEl.className = "status success";
+            chatStatusEl.textContent =
+              "✅ Chatbot loaded! Look for the colored circle in the bottom-right corner.";
+          };
+          script.onerror = () => {
+            chatStatusEl.className = "status error";
+            chatStatusEl.textContent = "❌ Failed to load chatbot script.";
+          };
+          document.head.appendChild(script);
+        }, 500);
+      }
+
+      // Initialize on page load
+      window.addEventListener("load", () => {
+        loadTenantConfig(currentTenantId);
+
+        // Initialize chatbot
+        setTimeout(() => {
+          const script = document.createElement("script");
+          script.src = "/embed";
+          script.defer = true;
+          script.onload = () => {
+            const chatStatusEl = document.getElementById("chat-status");
+            chatStatusEl.className = "status success";
+            chatStatusEl.textContent =
+              "✅ Chatbot loaded! Look for the colored circle in the bottom-right corner.";
+          };
+          document.head.appendChild(script);
+        }, 1000);
+      });
+
+      // Add some debugging
+      console.log("🤖 Multi-Tenant Chatbot Tester initialized");
+      console.log("📋 Available tenants:", {
+        "Majestic Escape": "687d067f74f2f8e6e27e032c",
+        "CodeMax Solutions": "687d073374f2f8e6e27e032d",
+        "MuscleBlaze Fitness": "687d104974f2f8e6e27e032e",
+      });
+    </script>
+  </body>
+</html>

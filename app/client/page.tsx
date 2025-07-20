@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,10 +36,12 @@ interface ChatLog {
 export default function ClientPortal() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [credentials, setCredentials] = useState({ email: "", password: "" })
+  const [currentTenant, setCurrentTenant] = useState<any>(null)
   const [documents, setDocuments] = useState<Document[]>([])
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([])
   const [uploadProgress, setUploadProgress] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
 
   // Chatbot configuration
@@ -51,22 +53,111 @@ export default function ClientPortal() {
     apiToken: "client_token_demo_123",
   })
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Check for existing authentication on component mount
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      const token = localStorage.getItem('authToken')
+      console.log('🔍 Checking auth status, token:', token ? 'exists' : 'none')
+      if (token) {
+        try {
+          // Validate token by making a request to a protected endpoint
+          const response = await fetch('/api/auth/verify', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            console.log('✅ Auth verified, tenant data:', data.tenant)
+            setIsAuthenticated(true)
+            setCurrentTenant(data.tenant)
+            loadMockData()
+          } else {
+            console.log('❌ Auth verification failed:', response.status)
+            // Token is invalid, remove it
+            localStorage.removeItem('authToken')
+          }
+        } catch (error) {
+          console.error('❌ Auth check failed:', error)
+          localStorage.removeItem('authToken')
+        }
+      }
+    }
+    
+    checkAuthStatus()
+  }, [])
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (credentials.email && credentials.password) {
-      setIsAuthenticated(true)
-      loadMockData()
-      toast({
-        title: "Login successful",
-        description: "Welcome to your chatbot dashboard",
-      })
-    } else {
+    
+    if (!credentials.email || !credentials.password) {
       toast({
         title: "Login failed",
-        description: "Please enter valid credentials",
+        description: "Please enter both email and password",
         variant: "destructive",
       })
+      return
     }
+
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        console.log('🔑 Login successful, tenant data:', data.tenant)
+        setIsAuthenticated(true)
+        setCurrentTenant(data.tenant)
+        
+        // Update config with tenant's settings
+        if (data.tenant.config) {
+          setConfig({
+            ...config,
+            ...data.tenant.config,
+            apiToken: data.tenant.apiToken,
+          })
+        }
+        
+        // Store auth token in localStorage
+        localStorage.setItem('authToken', data.token)
+        
+        loadMockData() // TODO: Replace with real data loading
+        toast({
+          title: "Login successful",
+          description: `Welcome back, ${data.tenant.name}!`,
+        })
+      } else {
+        toast({
+          title: "Login failed",
+          description: data.error || "Invalid credentials",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      toast({
+        title: "Login failed",
+        description: "An error occurred during login",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    setCurrentTenant(null)
+    setCredentials({ email: "", password: "" })
+    localStorage.removeItem('authToken')
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out",
+    })
   }
 
   const loadMockData = () => {
@@ -179,20 +270,32 @@ export default function ClientPortal() {
   })
 
   const copyEmbedCode = () => {
-    const embedCode = `<script src="https://yourdomain.com/embed.js?token=${config.apiToken}" defer></script>`
+    const embedCode = `<!-- Secure Chatbot Embed - No API tokens exposed -->
+<meta name="chatbot-tenant-id" content="${currentTenant?._id || 'YOUR_TENANT_ID'}">
+<script src="${window.location.origin}/embed" defer></script>`
     navigator.clipboard.writeText(embedCode)
     toast({
-      title: "Embed code copied",
-      description: "The embed code has been copied to your clipboard",
+      title: "Secure embed code copied",
+      description: "The secure embed code has been copied to your clipboard",
     })
   }
 
+  const copyTenantId = () => {
+    if (currentTenant?._id) {
+      navigator.clipboard.writeText(currentTenant._id)
+      toast({
+        title: "Tenant ID copied",
+        description: "Your tenant ID has been copied to your clipboard",
+      })
+    }
+  }
+
   const regenerateToken = () => {
-    const newToken = `client_token_${Date.now()}`
-    setConfig({ ...config, apiToken: newToken })
+    // Note: In secure embed system, tokens are generated automatically
+    // This function is kept for UI compatibility but shows a message
     toast({
-      title: "Token regenerated",
-      description: "Your API token has been updated",
+      title: "Secure System Active",
+      description: "Your chatbot now uses automatic JWT tokens - no manual regeneration needed!",
     })
   }
 
@@ -247,11 +350,11 @@ export default function ClientPortal() {
                   placeholder="Enter your password"
                 />
               </div>
-              <Button type="submit" className="w-full">
-                Sign In
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Signing In..." : "Sign In"}
               </Button>
             </form>
-            <p className="text-sm text-gray-500 mt-4 text-center">Demo: Use any email and password</p>
+            <p className="text-sm text-gray-500 mt-4 text-center">Enter your company credentials</p>
           </CardContent>
         </Card>
       </div>
@@ -272,13 +375,30 @@ export default function ClientPortal() {
               <p className="text-sm text-gray-500">Customize and manage your AI assistant</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => setIsAuthenticated(false)}
-            className="hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
-          >
-            Logout
-          </Button>
+          
+          {/* User Profile Section */}
+          <div className="flex items-center space-x-4">
+            {currentTenant && (
+              <div className="flex items-center space-x-3">
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-gray-900">{currentTenant.name}</p>
+                  <p className="text-xs text-gray-500">{currentTenant.email}</p>
+                </div>
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-semibold">
+                    {currentTenant.name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            )}
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              className="hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
+            >
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -522,24 +642,56 @@ export default function ClientPortal() {
                 <CardDescription>Copy and paste this code into your website to add the chatbot</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                  <h3 className="font-medium text-green-900 mb-2">🔐 Secure Embed System</h3>
+                  <p className="text-sm text-green-800">
+                    Your chatbot now uses a secure embed system with JWT tokens and domain validation. 
+                    No API tokens are exposed in your website code!
+                  </p>
+                </div>
+
                 <div>
-                  <Label htmlFor="api-token">API Token</Label>
+                  <Label htmlFor="tenant-id">Your Tenant ID</Label>
+                  {console.log('🎯 Current tenant in render:', currentTenant)}
                   <div className="flex items-center space-x-2 mt-1">
-                    <Input id="api-token" value={config.apiToken} readOnly className="font-mono text-sm" />
-                    <Button variant="outline" onClick={regenerateToken}>
-                      Regenerate
+                    <Input 
+                      id="tenant-id" 
+                      value={currentTenant?._id || 'Loading...'} 
+                      readOnly 
+                      className="font-mono text-sm" 
+                    />
+                    <Button variant="outline" onClick={copyTenantId}>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy
                     </Button>
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="embed-code">Embed Code</Label>
+                  <Label htmlFor="allowed-domains">Allowed Domains</Label>
+                  <div className="mt-1">
+                    <Input 
+                      id="allowed-domains" 
+                      value={currentTenant?.allowedDomains?.join(', ') || 'localhost, 127.0.0.1'} 
+                      readOnly 
+                      className="font-mono text-sm" 
+                    />
+                    <p className="text-sm text-gray-500 mt-1">
+                      Your chatbot will only work on these domains for security
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="embed-code">Secure Embed Code</Label>
                   <div className="mt-1">
                     <Textarea
                       id="embed-code"
-                      value={`<script src="https://yourdomain.com/embed.js?token=${config.apiToken}" defer></script>`}
+                      value={`<!-- Secure Chatbot Embed - No API tokens exposed -->
+<meta name="chatbot-tenant-id" content="${currentTenant?._id || 'YOUR_TENANT_ID'}">
+<script src="${window.location.origin}/embed" defer></script>`}
                       readOnly
-                      rows={3}
+                      rows={4}
                       className="font-mono text-sm"
                     />
                     <Button className="mt-2" onClick={copyEmbedCode}>
@@ -550,12 +702,23 @@ export default function ClientPortal() {
                 </div>
 
                 <div className="bg-blue-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-blue-900 mb-2">Installation Instructions</h3>
-                  <ol className="text-sm text-blue-800 space-y-1">
-                    <li>1. Copy the embed code above</li>
-                    <li>2. Paste it before the closing &lt;/body&gt; tag on your website</li>
-                    <li>3. The chatbot will appear as a floating button on the bottom-right</li>
-                    <li>4. Visitors can click it to start chatting</li>
+                  <h3 className="font-medium text-blue-900 mb-2">🛡️ Security Features</h3>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>✅ No API tokens exposed in your website code</li>
+                    <li>✅ Domain-based authentication prevents unauthorized use</li>
+                    <li>✅ JWT tokens expire automatically (2 hours)</li>
+                    <li>✅ Backend validates every request</li>
+                  </ul>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                  <h3 className="font-medium text-yellow-900 mb-2">📋 Installation Instructions</h3>
+                  <ol className="text-sm text-yellow-800 space-y-1">
+                    <li>1. Copy the secure embed code above</li>
+                    <li>2. Replace YOUR_TENANT_ID with your actual tenant ID</li>
+                    <li>3. Paste the code before the closing &lt;/body&gt; tag on your website</li>
+                    <li>4. Ensure your domain is in the allowed domains list</li>
+                    <li>5. The chatbot will appear as a floating button on the bottom-right</li>
                   </ol>
                 </div>
               </CardContent>

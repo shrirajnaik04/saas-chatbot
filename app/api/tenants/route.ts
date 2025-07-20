@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       apiToken,
       status: "active",
       ragEnabled: true,
+      allowedDomains: [], // Array of allowed domains for embed
       config: {
         botName: "AI Assistant",
         welcomeMessage: "Hello! How can I help you today?",

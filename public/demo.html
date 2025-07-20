@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure Chatbot Demo - Majestic Escape</title>
+
+    <!-- SECURE: Tenant ID is stored in meta tag, not exposed in script URL -->
+    <meta name="chatbot-tenant-id" content="687d104974f2f8e6e27e032e" />
+
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+      }
+      .feature {
+        background: #f8f9fa;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-left: 4px solid #667eea;
+        border-radius: 5px;
+      }
+      .security-info {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+        padding: 1rem;
+        border-radius: 5px;
+        margin: 1rem 0;
+      }
+      .code {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 5px;
+        font-family: monospace;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>🏨 Majestic Escape Resort</h1>
+      <p>
+        Experience luxury and comfort with our premium hotel services. Our AI
+        assistant is here to help!
+      </p>
+    </div>
+
+    <div class="security-info">
+      <h3>🔐 Secure Chatbot Implementation</h3>
+      <p>
+        <strong>This page demonstrates the new secure embed system:</strong>
+      </p>
+      <ul>
+        <li>✅ No exposed API tokens in the HTML</li>
+        <li>✅ Domain-based authentication</li>
+        <li>✅ Short-lived JWT tokens (2 hours expiry)</li>
+        <li>✅ Automatic token refresh on session expiry</li>
+      </ul>
+    </div>
+
+    <div class="feature">
+      <h3>📋 How it works:</h3>
+      <ol>
+        <li>Tenant ID is stored securely in meta tag</li>
+        <li>Embed script fetches initialization token from backend</li>
+        <li>Backend validates domain against tenant's allowed list</li>
+        <li>If valid, issues signed JWT with 2-hour expiry</li>
+        <li>All chat interactions use the JWT token</li>
+      </ol>
+    </div>
+
+    <div class="feature">
+      <h3>🛡️ Security Features:</h3>
+      <ul>
+        <li>
+          <strong>Domain Validation:</strong> Only authorized domains can load
+          the chatbot
+        </li>
+        <li>
+          <strong>Token Expiry:</strong> Tokens expire automatically after 2
+          hours
+        </li>
+        <li>
+          <strong>No Static Tokens:</strong> No permanent API keys exposed in
+          frontend
+        </li>
+        <li>
+          <strong>JWT Signing:</strong> Tokens are cryptographically signed
+        </li>
+      </ul>
+    </div>
+
+    <div class="feature">
+      <h3>💬 Try the Chatbot:</h3>
+      <p>
+        Click the chat bubble in the bottom-right corner to start a conversation
+        with our AI assistant!
+      </p>
+      <p>
+        <em
+          >Ask about our hotel amenities, booking process, or any other
+          questions.</em
+        >
+      </p>
+    </div>
+
+    <div class="code">
+      <h4>Implementation Code:</h4>
+      <pre>
+&lt;!-- Secure Implementation --&gt;
+&lt;meta name="chatbot-tenant-id" content="YOUR_TENANT_ID"&gt;
+&lt;script src="https://yourdomain.com/embed.js" defer&gt;&lt;/script&gt;
+
+&lt;!-- Old Insecure Way (DON'T USE) --&gt;
+&lt;!-- &lt;script src="https://yourdomain.com/embed.js?token=exposed_token" defer&gt;&lt;/script&gt; --&gt;</pre
+      >
+    </div>
+
+    <!-- SECURE EMBED: No tokens in the script URL -->
+    <script src="http://localhost:3000/embed" defer></script>
+  </body>
+</html>

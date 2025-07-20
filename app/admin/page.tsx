@@ -37,8 +37,9 @@ export default function AdminPortal() {
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [credentials, setCredentials] = useState({ username: "", password: "" })
-  const [newTenant, setNewTenant] = useState({ name: "", email: "" })
+  const [newTenant, setNewTenant] = useState({ name: "", email: "", password: "" })
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
 
   // Mock authentication
@@ -60,48 +61,39 @@ export default function AdminPortal() {
     }
   }
 
-  const loadTenants = () => {
-    // Mock data - in real app, fetch from API
-    const mockTenants: Tenant[] = [
-      {
-        id: "1",
-        name: "Acme Corp",
-        email: "admin@acme.com",
-        status: "active",
-        apiToken: "acme_token_123",
-        ragEnabled: true,
-        createdAt: "2024-01-15",
-        chatCount: 1250,
-        documentCount: 15,
-      },
-      {
-        id: "2",
-        name: "TechStart Inc",
-        email: "contact@techstart.com",
-        status: "active",
-        apiToken: "tech_token_456",
-        ragEnabled: false,
-        createdAt: "2024-02-01",
-        chatCount: 890,
-        documentCount: 8,
-      },
-      {
-        id: "3",
-        name: "Global Solutions",
-        email: "info@globalsol.com",
-        status: "suspended",
-        apiToken: "global_token_789",
-        ragEnabled: true,
-        createdAt: "2024-01-20",
-        chatCount: 2100,
-        documentCount: 22,
-      },
-    ]
-    setTenants(mockTenants)
+  const loadTenants = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/tenants')
+      const data = await response.json()
+      
+      if (response.ok) {
+        setTenants(data.tenants.map((tenant: any) => ({
+          id: tenant._id,
+          name: tenant.name,
+          email: tenant.email,
+          status: tenant.status,
+          apiToken: tenant.apiToken,
+          ragEnabled: tenant.ragEnabled,
+          createdAt: new Date(tenant.createdAt).toISOString().split("T")[0],
+          chatCount: 0, // TODO: Get from analytics
+          documentCount: 0, // TODO: Get from documents collection
+        })))
+      }
+    } catch (error) {
+      console.error('Failed to load tenants:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load tenants",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const createTenant = () => {
-    if (!newTenant.name || !newTenant.email) {
+  const createTenant = async () => {
+    if (!newTenant.name || !newTenant.email || !newTenant.password) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -110,54 +102,118 @@ export default function AdminPortal() {
       return
     }
 
-    const tenant: Tenant = {
-      id: Date.now().toString(),
-      name: newTenant.name,
-      email: newTenant.email,
-      status: "active",
-      apiToken: `token_${Date.now()}`,
-      ragEnabled: true,
-      createdAt: new Date().toISOString().split("T")[0],
-      chatCount: 0,
-      documentCount: 0,
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTenant)
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        setNewTenant({ name: "", email: "", password: "" })
+        await loadTenants() // Reload the list
+        toast({
+          title: "Tenant created",
+          description: `${newTenant.name} has been added successfully`,
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to create tenant",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Failed to create tenant:', error)
+      toast({
+        title: "Error",
+        description: "Failed to create tenant",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
-
-    setTenants([...tenants, tenant])
-    setNewTenant({ name: "", email: "" })
-    toast({
-      title: "Tenant created",
-      description: `${tenant.name} has been added successfully`,
-    })
   }
 
-  const toggleTenantStatus = (tenantId: string) => {
-    setTenants(
-      tenants.map((tenant) =>
-        tenant.id === tenantId ? { ...tenant, status: tenant.status === "active" ? "suspended" : "active" } : tenant,
-      ),
-    )
-    toast({
-      title: "Status updated",
-      description: "Tenant status has been changed",
-    })
+  const toggleTenantStatus = async (tenantId: string) => {
+    const tenant = tenants.find(t => t.id === tenantId)
+    if (!tenant) return
+
+    try {
+      const newStatus = tenant.status === "active" ? "suspended" : "active"
+      const response = await fetch('/api/tenants', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tenantId, status: newStatus })
+      })
+      
+      if (response.ok) {
+        await loadTenants() // Reload the list
+        toast({
+          title: "Status updated",
+          description: "Tenant status has been changed",
+        })
+      }
+    } catch (error) {
+      console.error('Failed to update tenant:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update tenant status",
+        variant: "destructive",
+      })
+    }
   }
 
-  const regenerateToken = (tenantId: string) => {
-    setTenants(
-      tenants.map((tenant) => (tenant.id === tenantId ? { ...tenant, apiToken: `token_${Date.now()}` } : tenant)),
-    )
-    toast({
-      title: "Token regenerated",
-      description: "New API token has been generated",
-    })
+  const regenerateToken = async (tenantId: string) => {
+    try {
+      const newToken = `tenant_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const response = await fetch('/api/tenants', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tenantId, apiToken: newToken })
+      })
+      
+      if (response.ok) {
+        await loadTenants() // Reload the list
+        toast({
+          title: "Token regenerated",
+          description: "New API token has been generated",
+        })
+      }
+    } catch (error) {
+      console.error('Failed to regenerate token:', error)
+      toast({
+        title: "Error",
+        description: "Failed to regenerate token",
+        variant: "destructive",
+      })
+    }
   }
 
-  const deleteTenant = (tenantId: string) => {
-    setTenants(tenants.filter((tenant) => tenant.id !== tenantId))
-    toast({
-      title: "Tenant deleted",
-      description: "Tenant has been removed from the system",
-    })
+  const deleteTenant = async (tenantId: string) => {
+    try {
+      const response = await fetch(`/api/tenants?id=${tenantId}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        await loadTenants() // Reload the list
+        toast({
+          title: "Tenant deleted",
+          description: "Tenant has been removed from the system",
+        })
+      }
+    } catch (error) {
+      console.error('Failed to delete tenant:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete tenant",
+        variant: "destructive",
+      })
+    }
   }
 
   if (!isAuthenticated) {
@@ -340,8 +396,18 @@ export default function AdminPortal() {
                             placeholder="Enter email address"
                           />
                         </div>
-                        <Button onClick={createTenant} className="w-full">
-                          Create Tenant
+                        <div>
+                          <Label htmlFor="tenant-password">Password</Label>
+                          <Input
+                            id="tenant-password"
+                            type="password"
+                            value={newTenant.password}
+                            onChange={(e) => setNewTenant({ ...newTenant, password: e.target.value })}
+                            placeholder="Enter password"
+                          />
+                        </div>
+                        <Button onClick={createTenant} className="w-full" disabled={isLoading}>
+                          {isLoading ? "Creating..." : "Create Tenant"}
                         </Button>
                       </div>
                     </DialogContent>
