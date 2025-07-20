@@ -41,12 +41,15 @@ export async function POST(req: Request) {
     console.log('🔑 Tenant ID:', decodedToken.tenantId)
 
     let systemPrompt = `You are ${tenantConfig.botName || 'AI Assistant'}, a helpful AI assistant.`
+    let ragUsed = false
+    let context = null
 
     // If RAG is enabled, add context from documents
     if (tenantConfig.ragEnabled) {
-      const context = await getRelevantContext(userMessage, decodedToken.tenantId)
+      context = await getRelevantContext(userMessage, decodedToken.tenantId)
       if (context) {
         systemPrompt += `\n\nUse the following context to answer questions when relevant:\n${context}`
+        ragUsed = true
       }
     }
 
@@ -62,6 +65,14 @@ export async function POST(req: Request) {
     const response = result.text?.trim() || "I'm sorry, I couldn't generate a response."
 
     console.log('✅ Generated response:', response.substring(0, 100) + '...')
+
+    // Save chat log to database
+    try {
+      await saveChatLog(decodedToken.tenantId, userMessage, response, ragUsed)
+    } catch (logError) {
+      console.error('❌ Error saving chat log:', logError)
+      // Don't fail the response if logging fails
+    }
 
     return Response.json({ 
       response,
@@ -105,4 +116,24 @@ async function getRelevantContext(query: string, tenantId: string) {
   `
   
   return mockContext
+}
+
+// Save chat log to database
+async function saveChatLog(tenantId: string, message: string, response: string, ragUsed: boolean) {
+  try {
+    const db = await getDatabase()
+    const chatLog = {
+      tenantId: tenantId,
+      message: message,
+      response: response,
+      timestamp: new Date(),
+      ragUsed: ragUsed
+    }
+    
+    await db.collection("chat_logs").insertOne(chatLog)
+    console.log('💾 Chat log saved successfully')
+  } catch (error) {
+    console.error('❌ Error saving chat log:', error)
+    throw error
+  }
 }

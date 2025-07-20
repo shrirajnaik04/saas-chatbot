@@ -39,6 +39,12 @@ export default function ClientPortal() {
   const [currentTenant, setCurrentTenant] = useState<any>(null)
   const [documents, setDocuments] = useState<Document[]>([])
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([])
+  const [analytics, setAnalytics] = useState({
+    totalChats: 0,
+    thisMonthChats: 0,
+    ragUsagePercentage: 0,
+    ragUsedChats: 0
+  })
   const [uploadProgress, setUploadProgress] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -70,7 +76,7 @@ export default function ClientPortal() {
             console.log('✅ Auth verified, tenant data:', data.tenant)
             setIsAuthenticated(true)
             setCurrentTenant(data.tenant)
-            loadMockData()
+            loadRealTimeData()
           } else {
             console.log('❌ Auth verification failed:', response.status)
             // Token is invalid, remove it
@@ -85,6 +91,17 @@ export default function ClientPortal() {
     
     checkAuthStatus()
   }, [])
+
+  // Auto-refresh analytics every 30 seconds
+  useEffect(() => {
+    if (isAuthenticated) {
+      const interval = setInterval(() => {
+        loadRealTimeData()
+      }, 30000) // 30 seconds
+
+      return () => clearInterval(interval)
+    }
+  }, [isAuthenticated])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -125,7 +142,7 @@ export default function ClientPortal() {
         // Store auth token in localStorage
         localStorage.setItem('authToken', data.token)
         
-        loadMockData() // TODO: Replace with real data loading
+        loadRealTimeData() // Load real data instead of mock data
         toast({
           title: "Login successful",
           description: `Welcome back, ${data.tenant.name}!`,
@@ -158,6 +175,71 @@ export default function ClientPortal() {
       title: "Logged out",
       description: "You have been successfully logged out",
     })
+  }
+
+  const loadRealTimeData = async () => {
+    const token = localStorage.getItem('authToken')
+    if (!token) {
+      console.error('❌ No auth token found')
+      return
+    }
+
+    try {
+      // Fetch real chat logs and analytics
+      const response = await fetch('/api/chat-logs', {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('✅ Real-time data loaded:', data)
+        
+        // Update analytics state
+        setAnalytics(data.analytics)
+        
+        // Update chat logs
+        setChatLogs(data.chatLogs)
+        
+        // Load mock documents for now (TODO: Replace with real document loading)
+        setDocuments([
+          {
+            id: "1",
+            name: "Product Manual.pdf",
+            type: "application/pdf",
+            size: 2048000,
+            uploadedAt: "2024-01-15T10:30:00Z",
+            status: "ready",
+          },
+          {
+            id: "2",
+            name: "FAQ.txt",
+            type: "text/plain",
+            size: 15000,
+            uploadedAt: "2024-01-16T14:20:00Z",
+            status: "ready",
+          },
+          {
+            id: "3",
+            name: "Customer Data.csv",
+            type: "text/csv",
+            size: 500000,
+            uploadedAt: "2024-01-17T09:15:00Z",
+            status: "processing",
+          },
+        ])
+      } else {
+        console.error('❌ Failed to load real-time data:', response.status)
+        // Fallback to mock data
+        loadMockData()
+      }
+    } catch (error) {
+      console.error('❌ Error loading real-time data:', error)
+      // Fallback to mock data
+      loadMockData()
+    }
   }
 
   const loadMockData = () => {
@@ -413,8 +495,8 @@ export default function ClientPortal() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-blue-900">{chatLogs.length}</div>
-              <p className="text-xs text-blue-600">This month</p>
+              <div className="text-3xl font-bold text-blue-900">{analytics.totalChats}</div>
+              <p className="text-xs text-blue-600">All time</p>
             </CardContent>
           </Card>
 
@@ -440,7 +522,7 @@ export default function ClientPortal() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-purple-900">
-                {Math.round((chatLogs.filter((log) => log.ragUsed).length / chatLogs.length) * 100)}%
+                {analytics.ragUsagePercentage}%
               </div>
               <p className="text-xs text-purple-600">Of conversations</p>
             </CardContent>
@@ -652,7 +734,6 @@ export default function ClientPortal() {
 
                 <div>
                   <Label htmlFor="tenant-id">Your Tenant ID</Label>
-                  {console.log('🎯 Current tenant in render:', currentTenant)}
                   <div className="flex items-center space-x-2 mt-1">
                     <Input 
                       id="tenant-id" 
