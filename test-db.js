@@ -3,7 +3,7 @@
 
 const { MongoClient } = require('mongodb');
 
-const uri = "mongodb+srv://nykshriraj4nov:78hvwANp1039gILy@cluster0.yw0xpsa.mongodb.net/chatbot_saas?retryWrites=true&w=majority&appName=Cluster0";
+const uri = process.env.MONGODB_URI || "mongodb://localhost:27017/chatbot_saas";
 
 async function testConnection() {
   const client = new MongoClient(uri);

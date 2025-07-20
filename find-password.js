@@ -31,10 +31,9 @@ async function testLogin(email, password) {
 
 async function findPassword() {
   const commonPasswords = [
-    'password123',
+    process.env.DEFAULT_PASSWORD || 'password123',
     'admin123',
     'test123',
-    'muscleblaze',
     '123456',
     'password',
     'test',

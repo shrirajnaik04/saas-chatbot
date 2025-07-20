@@ -47,7 +47,20 @@ pnpm install
 
 2. **Set up environment variables:**
 \`\`\`bash
-cp .env.example .env.local
+cp .env.example .env
+```
+
+Edit `.env` with your configuration:
+```env
+# See SECURITY.md for detailed setup instructions
+TOGETHER_API_KEY=your_together_api_key_here
+MONGODB_URI=your_mongodb_connection_string_here
+JWT_SECRET=your_jwt_secret_here
+EMBED_JWT_SECRET=your_embed_jwt_secret_here
+NEXTAUTH_URL=http://localhost:3000
+```
+
+⚠️ **Security Notice**: Never commit real credentials. See `SECURITY.md` for detailed security guidelines.
 \`\`\`
 
 Edit `.env.local` with your configuration:

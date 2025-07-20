@@ -4,7 +4,7 @@
 async function testLogin() {
   const loginData = {
     email: "info@majesticescape.in",
-    password: "password123" // Replace with actual password used during tenant creation
+    password: process.env.DEFAULT_PASSWORD || "password123" // Use environment variable
   };
 
   try {
