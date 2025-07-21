@@ -60,6 +60,12 @@ export async function GET(request: NextRequest) {
     
     // Create the main chat widget
     function createChatWidget(config) {
+        // Remove existing widget if it exists
+        const existingWidget = document.getElementById('chatbot-widget');
+        if (existingWidget) {
+            existingWidget.remove();
+        }
+        
         const widgetHTML = \`
             <div id="chatbot-widget" style="
                 position: fixed;
@@ -195,6 +201,12 @@ export async function GET(request: NextRequest) {
     
     // Create error widget
     function createErrorWidget(errorMessage) {
+        // Remove existing widget if it exists
+        const existingWidget = document.getElementById('chatbot-widget');
+        if (existingWidget) {
+            existingWidget.remove();
+        }
+        
         const errorHTML = \`
             <div id="chatbot-widget" style="
                 position: fixed;

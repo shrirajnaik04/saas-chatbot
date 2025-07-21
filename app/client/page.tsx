@@ -76,6 +76,16 @@ export default function ClientPortal() {
             console.log('✅ Auth verified, tenant data:', data.tenant)
             setIsAuthenticated(true)
             setCurrentTenant(data.tenant)
+            
+            // Update config with tenant's settings
+            if (data.tenant.config) {
+              setConfig({
+                ...config,
+                ...data.tenant.config,
+                apiToken: data.tenant.apiToken,
+              })
+            }
+            
             loadRealTimeData()
           } else {
             console.log('❌ Auth verification failed:', response.status)
@@ -387,6 +397,55 @@ export default function ClientPortal() {
       title: "Document deleted",
       description: "The document has been removed from your knowledge base",
     })
+  }
+
+  const saveConfiguration = async () => {
+    if (!currentTenant?._id) {
+      toast({
+        title: "Error",
+        description: "No tenant ID found. Please log in again.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/tenants', {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({ 
+          id: currentTenant._id,
+          config: config
+        })
+      })
+      
+      if (response.ok) {
+        toast({
+          title: "Configuration saved",
+          description: "Your chatbot configuration has been updated successfully!",
+        })
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "Save failed",
+          description: errorData.error || "Failed to save configuration",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Save configuration error:', error)
+      toast({
+        title: "Save failed",
+        description: "An error occurred while saving configuration",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const formatFileSize = (bytes: number) => {
@@ -712,7 +771,13 @@ export default function ClientPortal() {
                   </div>
                 </div>
 
-                <Button className="w-full">Save Configuration</Button>
+                <Button 
+                  className="w-full" 
+                  onClick={saveConfiguration}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Saving..." : "Save Configuration"}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

@@ -4,6 +4,16 @@
 
 This project uses environment variables to store sensitive configuration. **Never commit real credentials to version control.**
 
+## ⚠️ BEFORE PUSHING TO REPOSITORY
+
+### ✅ Files Already Protected (in .gitignore):
+
+- `.env*` - Environment variables with secrets
+- `LOGIN_CREDENTIALS.md` - Development credentials
+- `add-tenant-credentials.js` - Setup scripts with passwords
+- `find-password.js` - Password utilities
+- `setup-dev-data.js` - Development data scripts
+
 ### Required Environment Variables
 
 Create a `.env` file in the root directory with these variables:
@@ -26,11 +36,12 @@ NEXTAUTH_URL=http://localhost:3000
 ### Generating Secure Secrets
 
 For JWT secrets, use these commands:
+
 ```bash
 # For JWT_SECRET
 openssl rand -base64 32
 
-# For EMBED_JWT_SECRET  
+# For EMBED_JWT_SECRET
 openssl rand -base64 32
 ```
 
@@ -61,7 +72,7 @@ openssl rand -base64 32
 ## 📋 Security Checklist
 
 - [ ] `.env` file contains no real credentials in version control
-- [ ] All scripts use `process.env` instead of hardcoded values  
+- [ ] All scripts use `process.env` instead of hardcoded values
 - [ ] JWT secrets are strong and unique
 - [ ] MongoDB connection uses authentication
 - [ ] API keys are from official sources

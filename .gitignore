@@ -25,3 +25,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Sensitive development files - DO NOT COMMIT
+LOGIN_CREDENTIALS.md
+add-tenant-credentials.js
+find-password.js
+setup-dev-data.js

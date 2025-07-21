@@ -8,7 +8,20 @@ const EMBED_JWT_SECRET = process.env.EMBED_JWT_SECRET || "embed_secret_change_in
 
 export async function POST(request: NextRequest) {
   try {
-    const { tenantId, domain } = await request.json()
+    // Parse request body safely
+    let body;
+    try {
+      const text = await request.text();
+      if (!text || text.trim() === '') {
+        return NextResponse.json({ error: "Request body is required" }, { status: 400 });
+      }
+      body = JSON.parse(text);
+    } catch (parseError) {
+      console.error("Chatbot init error:", parseError);
+      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+    }
+
+    const { tenantId, domain } = body;
     
     if (!tenantId || !domain) {
       return NextResponse.json({ error: "Tenant ID and domain are required" }, { status: 400 })
@@ -68,9 +81,12 @@ export async function POST(request: NextRequest) {
       success: true,
       token: embedToken,
       config: {
-        botName: tenant.config.botName,
-        primaryColor: tenant.config.primaryColor,
-        welcomeMessage: tenant.config.welcomeMessage,
+        botName: tenant.config.botName || "AI Assistant",
+        primaryColor: tenant.config.primaryColor || "#3B82F6",
+        secondaryColor: tenant.config.secondaryColor || "#1E40AF",
+        welcomeMessage: tenant.config.welcomeMessage || "Hello! How can I help you today?",
+        companyName: tenant.config.companyName || tenant.name,
+        ragEnabled: tenant.config.ragEnabled || false
       }
     })
 

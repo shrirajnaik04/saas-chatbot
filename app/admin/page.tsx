@@ -45,7 +45,10 @@ export default function AdminPortal() {
   // Mock authentication
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
-    if (credentials.username === "admin" && credentials.password === "admin123") {
+    const adminUsername = process.env.NEXT_PUBLIC_ADMIN_USERNAME || "admin"
+    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123"
+    
+    if (credentials.username === adminUsername && credentials.password === adminPassword) {
       setIsAuthenticated(true)
       loadTenants()
       toast({
@@ -255,7 +258,9 @@ export default function AdminPortal() {
                 Sign In
               </Button>
             </form>
-            <p className="text-sm text-gray-500 mt-4 text-center">Demo credentials: admin / admin123</p>
+            <p className="text-sm text-gray-500 mt-4 text-center">
+              Demo credentials: Check your .env file for ADMIN_USERNAME and ADMIN_PASSWORD
+            </p>
           </CardContent>
         </Card>
       </div>
