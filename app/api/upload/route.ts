@@ -29,26 +29,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File size exceeds limit", step: "validate" }, { status: 400 })
     }
 
-  // 3) Sanitize filename and prepare path
+  // 3) Sanitize filename and optional local persistence (controlled by env)
   const originalName = file.name
   const safeName = path.basename(originalName).replace(/[^a-zA-Z0-9._-]/g, "_")
-  const uploadDir = path.join(process.cwd(), "uploads", tenantId)
+  const persistUploads = String(process.env.PERSIST_UPLOADS || "false").toLowerCase() === "true"
+  let filePath: string | undefined
+
+  const bytes = await file.arrayBuffer()
+  const buffer = Buffer.from(bytes)
+  if (persistUploads) {
+    const uploadDir = path.join(process.cwd(), "uploads", tenantId)
     try {
       await mkdir(uploadDir, { recursive: true })
     } catch (err) {
       console.error("Failed to create upload directory:", err)
       return NextResponse.json({ error: "Failed to create upload directory", step: "save" }, { status: 500 })
     }
-
-  const bytes = await file.arrayBuffer()
-  const buffer = Buffer.from(bytes)
-  const filePath = path.join(uploadDir, safeName)
+    filePath = path.join(uploadDir, safeName)
     try {
       await writeFile(filePath, buffer)
     } catch (err) {
       console.error("Failed to write uploaded file:", err)
       return NextResponse.json({ error: "Failed to persist uploaded file", step: "save" }, { status: 500 })
     }
+  }
 
     // 4) Parse and chunk – parse directly from the in-memory buffer to avoid any FS path issues
     let parsed
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
       tenantId,
   filename: safeName,
   originalName,
-      filePath,
+      ...(filePath ? { filePath } : {}),
       size: file.size,
       type: parsed.metadata.type,
       status: "processing",
