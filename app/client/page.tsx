@@ -304,12 +304,20 @@ export default function ClientPortal() {
             throw new Error(data.error || 'Upload failed')
           }
 
-          // Add only the saved document from server
-          const saved = data.document
-          setDocuments((prev) => {
-            const exists = prev.some((d) => d.id === saved.id)
-            return exists ? prev : [...prev, saved]
-          })
+          // Refetch documents from server to ensure a single, canonical list
+          const token = localStorage.getItem('authToken')
+          if (token) {
+            const docsRes = await fetch('/api/documents', {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            })
+            if (docsRes.ok) {
+              const d = await docsRes.json()
+              setDocuments(d.documents || [])
+            }
+          }
 
           toast({
             title: 'Upload successful',

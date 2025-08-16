@@ -30,6 +30,35 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "POST test upload (txt)",
+			"type": "shell",
+			"command": "powershell -NoLogo -NoProfile -Command \"curl.exe -s -D - -F 'file=@e:\\\\saas-chatbot\\\\test.txt' -F 'tenantId=test-tenant-1' http://localhost:3000/api/upload\"",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Restart Next dev",
+			"type": "shell",
+			"command": "powershell -NoProfile -Command \"if (Test-Path -LiteralPath '.next') { Remove-Item -Recurse -Force '.next' } ; pnpm dev\"",
+			"isBackground": true,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Restart Next dev",
+			"type": "shell",
+			"command": "powershell -NoProfile -Command \"if (Test-Path -LiteralPath '.next') { Remove-Item -Recurse -Force '.next' } ; pnpm dev\"",
+			"isBackground": true,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

@@ -1,12 +1,18 @@
 import { QdrantClient } from "@qdrant/js-client-rest"
+import { createHash } from "crypto"
 
 const QDRANT_URL = process.env.QDRANT_URL as string
 const QDRANT_API_KEY = process.env.QDRANT_API_KEY as string
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY as string
 
-// Embedding model info (Together AI - OpenAI compatible embeddings endpoint)
-const EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v1.5"
-const EMBEDDING_DIM = 768 // Known dimension for nomic-embed-text-v1.5
+// Embedding model config
+// - EMBEDDING_MODEL can specify a preferred model
+// - EMBEDDING_CANDIDATES can be a comma-separated list to try in order
+const EMBEDDING_MODEL = (process.env.EMBEDDING_MODEL || "").trim()
+const EMBEDDING_CANDIDATES = (process.env.EMBEDDING_CANDIDATES || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
 
 export interface QdrantUpsertDoc {
   id: string
@@ -18,61 +24,217 @@ export function getQdrantClient() {
   if (!QDRANT_URL) {
     throw new Error("QDRANT_URL is not set")
   }
-  // API key may be optional for local setups
   return new QdrantClient({ url: QDRANT_URL, apiKey: QDRANT_API_KEY })
 }
 
-// Also export a singleton client instance for simple use-cases
+// Optional singleton
 export const qdrant = new QdrantClient({ url: QDRANT_URL, apiKey: QDRANT_API_KEY })
 
-export function getTenantCollectionName(tenantId: string) {
-  return `tenant_${tenantId}_docs`
+export function getTenantCollectionName(tenantId: string, dim?: number) {
+  return dim ? `tenant_${tenantId}_docs_${dim}` : `tenant_${tenantId}_docs`
 }
 
-export async function ensureTenantCollection(tenantId: string) {
+// Ensure a collection exists that matches the desired dimension.
+// Prefer suffixed name (with dim). Fall back to legacy name if present and size matches.
+export async function ensureTenantCollection(tenantId: string, dim: number) {
   const client = getQdrantClient()
-  const collectionName = getTenantCollectionName(tenantId)
-
+  const preferred = getTenantCollectionName(tenantId, dim)
   try {
-    await client.getCollection(collectionName)
-    return collectionName
-  } catch {
-    // Create collection if it doesn't exist
-    await client.createCollection(collectionName, {
-      vectors: {
-        size: EMBEDDING_DIM,
-        distance: "Cosine",
-      },
-    })
-    return collectionName
-  }
+    await client.getCollection(preferred)
+    return preferred
+  } catch {}
+
+  const legacy = getTenantCollectionName(tenantId)
+  try {
+    const info: any = await client.getCollection(legacy)
+    const size = info?.config?.params?.vectors?.size || info?.result?.config?.params?.vectors?.size
+    if (typeof size === "number" && size === dim) {
+      return legacy
+    }
+  } catch {}
+
+  await client.createCollection(preferred, {
+    vectors: { size: dim, distance: "Cosine" },
+  })
+  return preferred
+}
+
+// Convert arbitrary string to deterministic UUID (v5-like)
+function toUuidFromString(input: string): string {
+  const h = createHash("sha1").update(input).digest("hex")
+  const s1 = h.slice(0, 8)
+  const s2 = h.slice(8, 12)
+  const s3num = (parseInt(h.slice(12, 16), 16) & 0x0fff) | 0x5000
+  const s3 = s3num.toString(16).padStart(4, "0")
+  const s4byte = (parseInt(h.slice(16, 18), 16) & 0x3f) | 0x80
+  const s4 = s4byte.toString(16).padStart(2, "0") + h.slice(18, 20)
+  const s5 = h.slice(20, 32)
+  return `${s1}-${s2}-${s3}-${s4}-${s5}`
+}
+
+function isUuid(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
 }
 
 async function embedTexts(texts: string[]): Promise<number[][]> {
-  if (!TOGETHER_API_KEY) {
-    throw new Error("TOGETHER_API_KEY is required for embeddings")
+  const provider = (process.env.AI_PROVIDER || "").toLowerCase().trim()
+  const model = (process.env.AI_MODEL || "").trim()
+
+  if (!provider) {
+    throw new Error("AI_PROVIDER is required (gemini | together | openai)")
   }
 
-  const resp = await fetch("https://api.together.xyz/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${TOGETHER_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: texts,
-    }),
-  })
+  // Provider: Gemini
+  if (provider === "gemini") {
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is required for Gemini embeddings")
+    if (!model) throw new Error("AI_MODEL is required for Gemini embeddings (e.g., embedding-001)")
 
-  if (!resp.ok) {
-    const msg = await resp.text()
-    throw new Error(`Embeddings request failed: ${resp.status} ${msg}`)
-  }
-
+    // If multiple texts, use batch endpoint; otherwise, embed single content
+    if (texts.length > 1) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:batchEmbedContents?key=${GEMINI_API_KEY}`
+      const body = {
+        requests: texts.map((t) => ({
+          model: `models/${model}`,
+          content: { parts: [{ text: t }] },
+        })),
+      }
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!resp.ok) {
+        const msg = await resp.text()
+        throw new Error(`Gemini embeddings failed: ${resp.status} ${msg}`)
+      }
   const data = await resp.json()
-  // OpenAI-compatible response: data: [{ embedding: number[] }]
-  return (data.data || []).map((d: any) => d.embedding as number[])
+  console.log("[embeddings] provider=gemini model=", model)
+      const embeds = (data?.embeddings || []).map((e: any) => e?.values || e?.embedding?.values)
+      if (!embeds.length || !Array.isArray(embeds[0])) throw new Error("Invalid Gemini batch response")
+      return embeds
+    } else {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${GEMINI_API_KEY}`
+      const body = {
+        model: `models/${model}`,
+        content: { parts: texts.map((t) => ({ text: t })) },
+      }
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!resp.ok) {
+        const msg = await resp.text()
+        throw new Error(`Gemini embeddings failed: ${resp.status} ${msg}`)
+      }
+  const data = await resp.json()
+  console.log("[embeddings] provider=gemini model=", model)
+      const values = data?.embedding?.values
+      if (!Array.isArray(values)) throw new Error("Invalid Gemini response: missing embedding.values")
+      return [values]
+    }
+  }
+
+  // Provider: OpenAI
+  if (provider === "openai") {
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required for OpenAI embeddings")
+    const mdl = model || "text-embedding-3-small"
+    const resp = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({ model: mdl, input: texts }),
+    })
+    if (!resp.ok) {
+      const msg = await resp.text()
+      throw new Error(`OpenAI embeddings failed: ${resp.status} ${msg}`)
+    }
+  const data = await resp.json()
+  console.log("[embeddings] provider=openai model=", mdl)
+    return (data?.data || []).map((d: any) => d?.embedding as number[])
+  }
+
+  // Provider: Together
+  if (provider === "together") {
+    const key = process.env.TOGETHER_API_KEY || TOGETHER_API_KEY
+    if (!key) throw new Error("TOGETHER_API_KEY is required for Together embeddings")
+
+    // Optional model discovery to bias toward available models
+    let available: string[] = []
+    try {
+      const modelsResp = await fetch("https://api.together.xyz/v1/models", {
+        headers: { Authorization: `Bearer ${key}` },
+        method: "GET",
+      })
+      if (modelsResp.ok) {
+        const modelsData = await modelsResp.json()
+        const ids: string[] = (modelsData?.data || []).map((m: any) => m?.id).filter(Boolean)
+        available = ids.filter((id) => /embed|retrieval/i.test(id))
+      }
+    } catch {}
+
+    const envPrimary = model || (process.env.EMBEDDING_MODEL || "").trim()
+    const envCandidates = (process.env.EMBEDDING_CANDIDATES || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const preferences = [
+      // Stable Together-hosted models
+      "BAAI/bge-base-en-v1.5",
+      "jinaai/jina-embeddings-v2-base-en",
+      envPrimary,
+      ...envCandidates,
+      "BAAI/bge-small-en-v1.5",
+      "BAAI/bge-large-en-v1.5",
+      "togethercomputer/m2-bert-80M-8k-retrieval",
+      "intfloat/e5-base-v2",
+      "nomic-ai/nomic-embed-text-v1.5",
+    ].filter(Boolean)
+    const preferredAvailable = preferences.filter((m) => available.includes(m))
+    const exploratory = available.filter((m) => !preferredAvailable.includes(m))
+    const candidates = [...preferredAvailable, ...exploratory, ...preferences]
+
+    let lastErr: any
+    for (const mdl of candidates) {
+      const resp = await fetch("https://api.together.xyz/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ model: mdl, input: texts }),
+      })
+
+      if (!resp.ok) {
+        const msg = await resp.text()
+        if (
+          resp.status === 404 ||
+          /model_not_available|Unable to access model|not found/i.test(msg)
+        ) {
+          lastErr = `Model not available: ${mdl}. ${msg}`
+          continue
+        }
+        if (resp.status === 401 || resp.status === 403) {
+          throw new Error(`Together embeddings auth failed (${resp.status}). ${msg}`)
+        }
+        throw new Error(`Together embeddings failed: ${resp.status} ${msg}`)
+      }
+  const data = await resp.json()
+  console.log("[embeddings] provider=together model=", mdl)
+      if (!Array.isArray(data?.data)) {
+        lastErr = `Unexpected Together response for ${mdl}: ${JSON.stringify(data).slice(0, 400)}`
+        continue
+      }
+      return data.data.map((d: any) => d.embedding as number[])
+    }
+    throw new Error(lastErr || "Together embeddings failed for all candidate models")
+  }
+
+  throw new Error(`Unsupported AI_PROVIDER: ${provider}. Use gemini | together | openai`)
 }
 
 export async function upsertDocumentsToQdrant(
@@ -80,18 +242,22 @@ export async function upsertDocumentsToQdrant(
   docs: QdrantUpsertDoc[],
 ): Promise<{ pointIds: (string | number)[] }> {
   const client = getQdrantClient()
-  const collectionName = await ensureTenantCollection(tenantId)
 
-  // Generate embeddings in one batch
+  // Generate embeddings first to know the dimension
   const texts = docs.map((d) => d.content)
   const vectors = await embedTexts(texts)
+  if (!vectors.length || !Array.isArray(vectors[0])) {
+    throw new Error("No embeddings generated")
+  }
+  const dim = vectors[0].length
+  const collectionName = await ensureTenantCollection(tenantId, dim)
 
-  // Build points payloads
   const points = docs.map((d, i) => ({
-    id: d.id, // can be string
+    id: isUuid(d.id) ? d.id : toUuidFromString(d.id),
     vector: vectors[i],
     payload: {
       ...d.metadata,
+      docId: d.id,
       content: d.content,
       tenantId,
       source: d.metadata?.filename || "upload",
@@ -116,9 +282,9 @@ export async function searchTenantContext(
   limit = 5,
 ): Promise<{ results: { content: string; score: number; payload: any }[] }> {
   const client = getQdrantClient()
-  const collectionName = await ensureTenantCollection(tenantId)
-
   const [queryVector] = await embedTexts([query])
+  const dim = queryVector.length
+  const collectionName = await ensureTenantCollection(tenantId, dim)
 
   const res = await client.search(collectionName, {
     vector: queryVector,
@@ -132,6 +298,5 @@ export async function searchTenantContext(
     score: r.score as number,
     payload: r.payload,
   }))
-
   return { results }
 }

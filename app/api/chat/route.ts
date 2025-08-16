@@ -55,8 +55,10 @@ export async function POST(req: Request) {
     }
 
     // For simple embed widget, use generateText
+    const chatProvider = 'together'
+    const chatModel = togetherModels['llama-3.1-8b']
     const result = await generateText({
-      model: together(togetherModels['llama-3.1-8b']),
+      model: together(chatModel),
       system: systemPrompt,
       prompt: userMessage,
       maxTokens: 500,
@@ -66,6 +68,7 @@ export async function POST(req: Request) {
     const response = result.text?.trim() || "I'm sorry, I couldn't generate a response."
 
     console.log('✅ Generated response:', response.substring(0, 100) + '...')
+    console.log('🧠 LLM used:', { provider: chatProvider, model: chatModel })
 
     // Save chat log to database
     try {

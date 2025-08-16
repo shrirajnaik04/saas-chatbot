@@ -42,7 +42,17 @@ export async function searchDocuments(tenantId: string, query: string, limit = 5
 export async function deleteCollection(tenantId: string) {
   try {
     const client = getQdrantClient()
-    await client.deleteCollection(`tenant_${tenantId}_docs`)
+    // Delete legacy collection (no suffix)
+    try { await client.deleteCollection(`tenant_${tenantId}_docs`) } catch {}
+    // Delete any dimension-suffixed collections
+    try {
+      const collections: any = await (client as any).getCollections?.()
+      const names: string[] = collections?.collections?.map((c: any) => c.name) || []
+      const toDelete = names.filter((n) => n.startsWith(`tenant_${tenantId}_docs_`))
+      for (const name of toDelete) {
+        try { await client.deleteCollection(name) } catch {}
+      }
+    } catch {}
     return { success: true }
   } catch (error: any) {
     console.error("Error deleting collection:", error)

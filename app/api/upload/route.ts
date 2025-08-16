@@ -130,10 +130,22 @@ export async function POST(request: NextRequest) {
       { returnDocument: "after" },
     )
 
-    const savedDoc = updateRes?.value || { _id: insertRes.insertedId, ...initialRecord, status: "ready" }
+    const saved = updateRes?.value || { _id: insertRes.insertedId, ...initialRecord, status: "ready" }
 
-    // 9) Return success
-    return NextResponse.json({ success: true, document: savedDoc })
+    // 9) Return success (normalize to client-facing shape to avoid duplicates)
+    return NextResponse.json({
+      success: true,
+      document: {
+        id: String(insertRes.insertedId),
+        name: safeName,
+        filename: safeName,
+        size: file.size,
+        type: parsed.metadata.type,
+        status: "ready",
+        uploadedAt: saved.uploadedAt,
+        chunkCount: chunks.length,
+      },
+    })
   } catch (error) {
     console.error("Upload error:", error)
     return NextResponse.json(
