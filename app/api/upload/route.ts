@@ -4,6 +4,7 @@ import { writeFile, mkdir } from "fs/promises"
 import path from "path"
 import { parseFile, parseFileFromBuffer, chunkText } from "@/lib/file-parser"
 import { addDocuments } from "@/lib/rag"
+import { deleteDocumentFromQdrant } from "@/lib/qdrant"
 import { getDatabase } from "@/lib/mongodb"
 
 export async function POST(request: NextRequest) {
@@ -115,7 +116,13 @@ export async function POST(request: NextRequest) {
       },
     }))
 
-    // 7) Upsert into Qdrant
+    // 7) Idempotency: purge any prior vectors for this documentId before upsert (handles retries/dupes)
+    try {
+      await deleteDocumentFromQdrant(tenantId, String(insertRes.insertedId))
+    } catch (e) {
+      console.warn("[upload] pre-upsert purge failed (continuing):", e)
+    }
+    // Upsert into Qdrant
     const ragResult = await addDocuments(tenantId, documents)
     if (!ragResult.success) {
       await db

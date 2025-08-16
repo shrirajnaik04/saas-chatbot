@@ -340,6 +340,20 @@ export async function upsertDocumentsToQdrant(
     },
   }))
 
+  // Extra safety: if this document already exists in the target collection, purge and reinsert (handles restarts)
+  try {
+    const filter = { must: [ { key: "tenantId", match: { value: tenantId } }, { key: "documentId", match: { value: docs[0]?.metadata?.documentId } } ] }
+    if ((docs[0]?.metadata?.documentId)) {
+      const res: any = await (client as any).scroll(collectionName, { filter, with_payload: false, with_vector: false, limit: 1 })
+      const existing = res?.points?.length || res?.result?.points?.length || 0
+      if (existing > 0) {
+        await client.delete(collectionName, { wait: true, filter })
+      }
+    }
+  } catch (e) {
+    // non-fatal; continue
+  }
+
   await client.upsert(collectionName, {
     wait: true,
     batch: {
@@ -417,4 +431,120 @@ export async function deleteCollectionsByTenant(tenantId: string): Promise<void>
   } catch (e) {
     console.warn("[qdrant] getCollections failed:", e)
   }
+}
+
+// Delete all vectors for a specific document across all collections for this tenant
+export async function deleteDocumentFromQdrant(
+  tenantId: string,
+  documentId: string,
+): Promise<{ deletedIn: string[] }> {
+  const client = getQdrantClient()
+  const clientName = await resolveClientNameFromTenantId(tenantId)
+  const norm = normalizeClientName(clientName)
+
+  let names: string[] = []
+  try {
+    const collections: any = await (client as any).getCollections?.()
+    names = collections?.collections?.map((c: any) => c.name) || []
+  } catch (e) {
+    console.warn("[qdrant] getCollections failed while deleting doc:", e)
+  }
+
+  const prefixNew = `tenant_${norm}_docs_`
+  const legacy1 = `tenant_${tenantId}_docs`
+  const legacyPrefix = `tenant_${tenantId}_docs_`
+  // Also include any tenant_* collections that contain _docs_ to cover tenant renames
+  const targets = names.filter(
+    (n) =>
+      n.startsWith(prefixNew) ||
+      n === legacy1 ||
+      n.startsWith(legacyPrefix) ||
+      (n.startsWith("tenant_") && n.includes("_docs_"))
+  )
+
+  const deletedIn: string[] = []
+  for (const name of targets) {
+    const filter = {
+      must: [
+        { key: "tenantId", match: { value: tenantId } },
+        { key: "documentId", match: { value: documentId } },
+      ],
+    }
+    try {
+      // Primary: delete by filter
+      await client.delete(name, { wait: true, filter })
+    } catch (e) {
+      console.warn(`[qdrant] filter delete failed in ${name}, will try scroll+ids:`, e)
+    }
+
+    // Fallback: scroll to collect IDs then delete by ids (handles older servers or stubborn filters)
+    try {
+      let nextOffset: any = undefined
+      let removed = 0
+      const batch = Number.parseInt(process.env.QDRANT_DELETE_BATCH || "512")
+      while (true) {
+        const res: any = await (client as any).scroll(name, {
+          filter,
+          with_payload: false,
+          with_vector: false,
+          limit: batch,
+          offset: nextOffset,
+        })
+        const points = res?.points || res?.result?.points || []
+        if (!points.length) break
+        const ids = points.map((p: any) => p.id).filter(Boolean)
+        if (ids.length) {
+          await client.delete(name, { wait: true, points: ids })
+          removed += ids.length
+        }
+        nextOffset = res?.next_page_offset || res?.result?.next_page_offset
+        if (!nextOffset) break
+      }
+      // Mark as deleted if we either ran filter delete or removed any by ids
+      deletedIn.push(name)
+      if (removed > 0) {
+        console.log(`[qdrant] removed ${removed} points for document ${documentId} in ${name}`)
+      }
+    } catch (e) {
+      console.warn(`[qdrant] scroll-based deletion failed in ${name}:`, e)
+    }
+
+    // Final safety: full scan with payload to identify any stubborn points, then delete by ids
+    try {
+      let nextOffset2: any = undefined
+      let removed2 = 0
+      const batch2 = Number.parseInt(process.env.QDRANT_DELETE_BATCH || "512")
+      while (true) {
+        const res2: any = await (client as any).scroll(name, {
+          with_payload: true,
+          with_vector: false,
+          limit: batch2,
+          offset: nextOffset2,
+        })
+        const points2 = res2?.points || res2?.result?.points || []
+        if (!points2.length) break
+        const ids2 = points2
+          .filter((p: any) => {
+            const payload = p?.payload || {}
+            const docIdMatch = payload.documentId === documentId || String(payload.docId || "").includes(`_${documentId}_`) || String(payload.docId || "") === documentId
+            const tenantMatch = payload.tenantId === tenantId
+            return docIdMatch && tenantMatch
+          })
+          .map((p: any) => p.id)
+          .filter(Boolean)
+        if (ids2.length) {
+          await client.delete(name, { wait: true, points: ids2 })
+          removed2 += ids2.length
+        }
+        nextOffset2 = res2?.next_page_offset || res2?.result?.next_page_offset
+        if (!nextOffset2) break
+      }
+      if (removed2 > 0 && !deletedIn.includes(name)) deletedIn.push(name)
+      if (removed2 > 0) console.log(`[qdrant] full-scan removed ${removed2} residual points for document ${documentId} in ${name}`)
+    } catch (e) {
+      console.warn(`[qdrant] full-scan deletion failed in ${name}:`, e)
+    }
+  }
+
+  return { deletedIn }
 }

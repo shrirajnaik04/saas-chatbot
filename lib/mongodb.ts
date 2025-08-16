@@ -9,6 +9,7 @@ const options = {}
 
 let client: MongoClient
 let clientPromise: Promise<MongoClient>
+let indexesInitialized = false
 
 if (process.env.NODE_ENV === "development") {
   const globalWithMongo = global as typeof globalThis & {
@@ -29,5 +30,19 @@ export default clientPromise
 
 export async function getDatabase(): Promise<Db> {
   const client = await clientPromise
-  return client.db("chatbot_saas")
+  const db = client.db("chatbot_saas")
+  // Initialize indexes once for dedup and performance
+  if (!indexesInitialized) {
+    try {
+      await db.collection("documents").createIndex(
+        { tenantId: 1, filename: 1, size: 1 },
+        { unique: true, name: "uniq_tenant_filename_size" },
+      )
+    } catch (e) {
+      // ignore if already exists or if permissions limited
+    } finally {
+      indexesInitialized = true
+    }
+  }
+  return db
 }

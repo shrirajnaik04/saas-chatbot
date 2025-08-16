@@ -376,12 +376,32 @@ export default function ClientPortal() {
     })
   }
 
-  const deleteDocument = (docId: string) => {
-    setDocuments(documents.filter((doc) => doc.id !== docId))
-    toast({
-      title: "Document deleted",
-      description: "The document has been removed from your knowledge base",
-    })
+  const deleteDocument = async (docId: string) => {
+    const confirmed = window.confirm("Delete this document and all its vectors? This cannot be undone.")
+    if (!confirmed) return
+
+    const token = localStorage.getItem('authToken')
+    if (!token) {
+      // Fallback: local remove when not authenticated (e.g., mock data)
+      setDocuments((prev) => prev.filter((doc) => doc.id !== docId))
+      toast({ title: "Document deleted (local)", description: "Removed from the list." })
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/documents?id=${encodeURIComponent(docId)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || 'Failed to delete document')
+
+      setDocuments((prev) => prev.filter((doc) => doc.id !== docId))
+      toast({ title: "Document deleted", description: "Removed from MongoDB, Qdrant, and disk (if persisted)." })
+    } catch (e: any) {
+      console.error('Delete document error:', e)
+      toast({ title: "Delete failed", description: e?.message || 'Unable to delete document', variant: 'destructive' })
+    }
   }
 
   const saveConfiguration = async () => {
