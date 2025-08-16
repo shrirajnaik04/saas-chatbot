@@ -3,6 +3,7 @@ import { generateText } from "ai"
 import { verifyEmbedToken } from "@/app/api/chatbot/init/route"
 import { getDatabase } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
+import { searchTenantContext } from "@/lib/qdrant"
 
 export const maxDuration = 30
 
@@ -97,7 +98,8 @@ async function getTenantConfig(tenantId: string) {
     
     return {
       botName: tenant.config?.botName || "AI Assistant",
-      ragEnabled: tenant.ragEnabled || true,
+  // Default to true if undefined/null, but respect explicit false
+  ragEnabled: tenant.ragEnabled === undefined || tenant.ragEnabled === null ? true : !!tenant.ragEnabled,
       primaryColor: tenant.config?.primaryColor || "#3B82F6",
     }
   } catch (error) {
@@ -106,16 +108,16 @@ async function getTenantConfig(tenantId: string) {
   }
 }
 
-// Mock function to get relevant context from documents
+// Get relevant context from Qdrant
 async function getRelevantContext(query: string, tenantId: string) {
-  // In real app, use vector search with ChromaDB filtered by tenantId
-  const mockContext = `
-  Business Hours: Monday to Friday, 9 AM to 6 PM EST
-  Support Email: support@company.com
-  Password Reset: Use the "Forgot Password" link on the login page
-  `
-  
-  return mockContext
+  try {
+    const { results } = await searchTenantContext(tenantId, query, 5)
+    const joined = results.map((r) => r.content).join("\n---\n")
+    return joined || null
+  } catch (e) {
+    console.error("RAG context search error:", e)
+    return null
+  }
 }
 
 // Save chat log to database

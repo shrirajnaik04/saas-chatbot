@@ -195,59 +195,37 @@ export default function ClientPortal() {
     }
 
     try {
-      // Fetch real chat logs and analytics
-      const response = await fetch('/api/chat-logs', {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const [logsRes, docsRes] = await Promise.all([
+        fetch('/api/chat-logs', {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }),
+        fetch('/api/documents', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+      ])
 
-      if (response.ok) {
-        const data = await response.json()
-        console.log('✅ Real-time data loaded:', data)
-        
-        // Update analytics state
+      if (logsRes.ok) {
+        const data = await logsRes.json()
         setAnalytics(data.analytics)
-        
-        // Update chat logs
         setChatLogs(data.chatLogs)
-        
-        // Load mock documents for now (TODO: Replace with real document loading)
-        setDocuments([
-          {
-            id: "1",
-            name: "Product Manual.pdf",
-            type: "application/pdf",
-            size: 2048000,
-            uploadedAt: "2024-01-15T10:30:00Z",
-            status: "ready",
-          },
-          {
-            id: "2",
-            name: "FAQ.txt",
-            type: "text/plain",
-            size: 15000,
-            uploadedAt: "2024-01-16T14:20:00Z",
-            status: "ready",
-          },
-          {
-            id: "3",
-            name: "Customer Data.csv",
-            type: "text/csv",
-            size: 500000,
-            uploadedAt: "2024-01-17T09:15:00Z",
-            status: "processing",
-          },
-        ])
-      } else {
-        console.error('❌ Failed to load real-time data:', response.status)
-        // Fallback to mock data
+      }
+
+      if (docsRes.ok) {
+        const d = await docsRes.json()
+        setDocuments(d.documents || [])
+      }
+
+      if (!logsRes.ok && !docsRes.ok) {
         loadMockData()
       }
     } catch (error) {
       console.error('❌ Error loading real-time data:', error)
-      // Fallback to mock data
       loadMockData()
     }
   }
@@ -308,47 +286,46 @@ export default function ClientPortal() {
   }
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[]) => {
+      if (!currentTenant?._id) return
       setIsUploading(true)
       setUploadProgress(0)
 
-      acceptedFiles.forEach((file) => {
-        // Simulate upload progress
-        const interval = setInterval(() => {
-          setUploadProgress((prev) => {
-            if (prev >= 100) {
-              clearInterval(interval)
-              setIsUploading(false)
+      for (const file of acceptedFiles) {
+        try {
+          const form = new FormData()
+          form.append('file', file)
+          form.append('tenantId', currentTenant._id)
 
-              // Add document to list
-              const newDoc: Document = {
-                id: Date.now().toString(),
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                uploadedAt: new Date().toISOString(),
-                status: "processing",
-              }
-              setDocuments((prev) => [...prev, newDoc])
+          const res = await fetch('/api/upload', { method: 'POST', body: form })
+          const data = await res.json()
 
-              toast({
-                title: "Upload successful",
-                description: `${file.name} has been uploaded and is being processed`,
-              })
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Upload failed')
+          }
 
-              // Simulate processing completion
-              setTimeout(() => {
-                setDocuments((prev) => prev.map((doc) => (doc.id === newDoc.id ? { ...doc, status: "ready" } : doc)))
-              }, 3000)
-
-              return 0
-            }
-            return prev + 10
+          // Add only the saved document from server
+          const saved = data.document
+          setDocuments((prev) => {
+            const exists = prev.some((d) => d.id === saved.id)
+            return exists ? prev : [...prev, saved]
           })
-        }, 200)
-      })
+
+          toast({
+            title: 'Upload successful',
+            description: `${file.name} has been processed`,
+          })
+        } catch (e: any) {
+          console.error('Upload error:', e)
+          toast({ title: 'Upload failed', description: e.message || 'Error uploading file', variant: 'destructive' })
+        }
+      }
+
+      setIsUploading(false)
+      setUploadProgress(100)
+      setTimeout(() => setUploadProgress(0), 1000)
     },
-    [toast],
+    [toast, currentTenant]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

@@ -62,3 +62,9 @@
 - All sensitive data has been removed from the codebase
 - The `tenant-tester.html` remains for testing the multi-tenant functionality
 - Make sure to set up proper environment variables in production
+
+## Environment Consolidation
+
+- All environment variables are now stored in a single `.env` file at the project root.
+- Previous `.env.local` values were merged into `.env` and the `.env.local` file has been removed.
+- Update any deployment or local scripts to read from `.env` only.

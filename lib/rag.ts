@@ -1,8 +1,4 @@
-import { ChromaClient } from "chromadb"
-
-const chroma = new ChromaClient({
-  path: `http://${process.env.CHROMA_HOST || "localhost"}:${process.env.CHROMA_PORT || 8000}`,
-})
+import { getQdrantClient, searchTenantContext as qdrantSearch, upsertDocumentsToQdrant } from "./qdrant"
 
 export interface Document {
   id: string
@@ -17,46 +13,27 @@ export interface Document {
 
 export async function addDocuments(tenantId: string, documents: Document[]) {
   try {
-    const collection = await chroma.getOrCreateCollection({
-      name: `tenant_${tenantId}`,
-      metadata: { tenantId },
-    })
-
-    const ids = documents.map((doc) => doc.id)
-    const contents = documents.map((doc) => doc.content)
-    const metadatas = documents.map((doc) => doc.metadata)
-
-    await collection.add({
-      ids,
-      documents: contents,
-      metadatas,
-    })
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error adding documents to ChromaDB:", error)
+    const { pointIds } = await upsertDocumentsToQdrant(
+      tenantId,
+      documents.map((d) => ({ id: d.id, content: d.content, metadata: d.metadata })),
+    )
+    return { success: true, pointIds }
+  } catch (error: any) {
+    console.error("Error adding documents to Qdrant:", error)
     return { success: false, error: error.message }
   }
 }
 
 export async function searchDocuments(tenantId: string, query: string, limit = 5) {
   try {
-    const collection = await chroma.getCollection({
-      name: `tenant_${tenantId}`,
-    })
-
-    const results = await collection.query({
-      queryTexts: [query],
-      nResults: limit,
-    })
-
+    const { results } = await qdrantSearch(tenantId, query, limit)
     return {
       success: true,
-      documents: results.documents[0] || [],
-      metadatas: results.metadatas[0] || [],
-      distances: results.distances[0] || [],
+      documents: results.map((r) => r.content),
+      metadatas: results.map((r) => r.payload),
+      distances: results.map((r) => 1 - r.score),
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error searching documents:", error)
     return { success: false, error: error.message }
   }
@@ -64,11 +41,10 @@ export async function searchDocuments(tenantId: string, query: string, limit = 5
 
 export async function deleteCollection(tenantId: string) {
   try {
-    await chroma.deleteCollection({
-      name: `tenant_${tenantId}`,
-    })
+    const client = getQdrantClient()
+    await client.deleteCollection(`tenant_${tenantId}_docs`)
     return { success: true }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting collection:", error)
     return { success: false, error: error.message }
   }

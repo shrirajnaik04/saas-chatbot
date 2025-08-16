@@ -1,6 +1,6 @@
-import { PDFExtract } from "pdf.js-extract"
 import fs from "fs/promises"
 import path from "path"
+// Load pdf-parse dynamically to avoid build-time issues
 
 export interface ParsedDocument {
   content: string
@@ -17,43 +17,52 @@ export async function parseFile(filePath: string, filename: string): Promise<Par
 
   switch (ext) {
     case ".pdf":
-      return parsePDF(filePath, filename)
+      try {
+        return await parsePDF(filePath, filename)
+      } catch (e: any) {
+        throw new Error(`Failed to parse PDF: ${e?.message || e}`)
+      }
     case ".txt":
-      return parseTXT(filePath, filename)
+      try {
+        return await parseTXT(filePath, filename)
+      } catch (e: any) {
+        throw new Error(`Failed to parse TXT: ${e?.message || e}`)
+      }
     case ".csv":
-      return parseCSV(filePath, filename)
+      try {
+        return await parseCSV(filePath, filename)
+      } catch (e: any) {
+        throw new Error(`Failed to parse CSV: ${e?.message || e}`)
+      }
     default:
       throw new Error(`Unsupported file type: ${ext}`)
   }
 }
 
 async function parsePDF(filePath: string, filename: string): Promise<ParsedDocument> {
-  const pdfExtract = new PDFExtract()
-
-  return new Promise((resolve, reject) => {
-    pdfExtract.extract(filePath, {}, (err, data) => {
-      if (err) {
-        reject(err)
-        return
-      }
-
-      const content = data.pages.map((page) => page.content.map((item) => item.str).join(" ")).join("\n\n")
-
-      resolve({
-        content,
-        metadata: {
-          filename,
-          type: "pdf",
-          pageCount: data.pages.length,
-          wordCount: content.split(/\s+/).length,
-        },
-      })
-    })
-  })
+  const data = await fs.readFile(filePath)
+  const { default: pdfParse } = await import("pdf-parse")
+  const parsed = await pdfParse(data)
+  const content = parsed.text || ""
+  if (!content.trim()) {
+    throw new Error("No extractable text found in PDF")
+  }
+  return {
+    content,
+    metadata: {
+      filename,
+      type: "pdf",
+      pageCount: (parsed.numpages as number) || undefined,
+      wordCount: content.split(/\s+/).length,
+    },
+  }
 }
 
 async function parseTXT(filePath: string, filename: string): Promise<ParsedDocument> {
   const content = await fs.readFile(filePath, "utf-8")
+  if (!content.trim()) {
+    throw new Error("TXT file is empty")
+  }
 
   return {
     content,
@@ -69,6 +78,9 @@ async function parseCSV(filePath: string, filename: string): Promise<ParsedDocum
   const content = await fs.readFile(filePath, "utf-8")
   const lines = content.split("\n")
   const headers = lines[0]?.split(",") || []
+  if (!headers.length) {
+    throw new Error("CSV appears to have no headers or content")
+  }
 
   // Convert CSV to readable text format
   const textContent = lines

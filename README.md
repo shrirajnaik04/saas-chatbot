@@ -13,7 +13,7 @@ A comprehensive multi-tenant SaaS platform for deploying AI-powered chatbots wit
 ### 🤖 AI-Powered Chatbots
 
 - **RAG Integration**: Upload documents (PDF, TXT, CSV) for contextual responses
-- **Vector Search**: ChromaDB for efficient document retrieval
+- **Vector Search**: Qdrant for efficient document retrieval
 - **Streaming Responses**: Real-time chat experience with Together.ai API
 - **Customizable**: Brand colors, welcome messages, bot names
 
@@ -37,7 +37,7 @@ A comprehensive multi-tenant SaaS platform for deploying AI-powered chatbots wit
 
 1. **Node.js 18+** and **pnpm**
 2. **MongoDB** (local or cloud)
-3. **ChromaDB** server
+3. **Qdrant** (cloud or local)
 4. **Together.ai API key**
 
 ### Installation
@@ -68,17 +68,18 @@ NEXTAUTH_URL=http://localhost:3000
 ⚠️ **Security Notice**: Never commit real credentials. See `SECURITY.md` for detailed security guidelines.
 \`\`\`
 
-Edit `.env.local` with your configuration:
-\`\`\`env
+Edit `.env` with your additional configuration as needed:
+
+```env
 TOGETHER_API_KEY=your_together_api_key_here
 MONGODB_URI=mongodb://localhost:27017/chatbot_saas
 NEXT_PUBLIC_ADMIN_USERNAME=admin
 NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password_here
 JWT_SECRET=your_jwt_secret_here
 EMBED_JWT_SECRET=your_embed_secret_here
-CHROMA_HOST=localhost
-CHROMA_PORT=8000
-\`\`\`
+QDRANT_URL=https://YOUR-QDRANT-URL
+QDRANT_API_KEY=your_qdrant_api_key_here
+```
 
 3. **Start MongoDB:**
    \`\`\`bash
@@ -95,17 +96,15 @@ docker run -d -p 27017:27017 --name mongodb mongo:latest
 
 \`\`\`
 
-4. **Start ChromaDB:**
+4. **Connect Qdrant:**
    \`\`\`bash
 
-# Using Docker
+# Use Qdrant Cloud or run locally with Docker
 
-docker run -d -p 8000:8000 --name chromadb chromadb/chroma:latest
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
 
-# Or using Python
+# Then set QDRANT_URL=http://localhost:6333 in .env
 
-pip install chromadb
-chroma run --host localhost --port 8000
 \`\`\`
 
 5. **Run the application:**
@@ -150,7 +149,7 @@ The chatbot will appear as a floating button in the bottom-right corner.
 - **Frontend**: Next.js 14, React, Tailwind CSS
 - **Backend**: Next.js API Routes, Node.js
 - **Database**: MongoDB (tenant data, documents, logs)
-- **Vector DB**: ChromaDB (document embeddings)
+- **Vector DB**: Qdrant (document embeddings)
 - **AI**: Together.ai API (LLM responses)
 - **Auth**: JWT tokens, bcrypt hashing
 
@@ -177,7 +176,7 @@ The chatbot will appear as a floating button in the bottom-right corner.
 
 ### Data Flow
 
-1. **Document Upload**: Files → Parser → Chunks → ChromaDB + MongoDB
+1. **Document Upload**: Files → Parser → Chunks → Embeddings → Qdrant + MongoDB
 2. **Chat Request**: User message → RAG search → LLM + context → Streamed response
 3. **Widget Integration**: Script tag → API token → Tenant config → Chat interface
 
@@ -244,7 +243,7 @@ chunkCount: Number
 
 1. **Environment**: Set production environment variables
 2. **Database**: Use MongoDB Atlas or dedicated server
-3. **Vector DB**: Deploy ChromaDB with persistent storage
+3. **Vector DB**: Use Qdrant Cloud or deploy Qdrant with persistent storage
 4. **CDN**: Configure for static assets and uploads
 5. **SSL**: Enable HTTPS for secure widget embedding
 
@@ -274,20 +273,20 @@ For issues and questions:
 ### Troubleshooting
 
 **MongoDB Connection Issues:**
-\`\`\`bash
+
+```bash
 
 # Check if MongoDB is running
 
 mongosh --eval "db.adminCommand('ismaster')"
-\`\`\`
+```
 
-**ChromaDB Connection Issues:**
-\`\`\`bash
+**Qdrant Connection Issues:**
 
-# Test ChromaDB endpoint
-
-curl http://localhost:8000/api/v1/heartbeat
-\`\`\`
+```bash
+# Test Qdrant endpoint
+curl http://localhost:6333/collections
+```
 
 **File Upload Errors:**
 
