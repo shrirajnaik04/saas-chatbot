@@ -1,5 +1,6 @@
 import { together, togetherModels } from "@/lib/together"
 import { generateText } from "ai"
+import { generateWithGemini, getGeminiModel } from "@/lib/gemini"
 import { verifyEmbedToken } from "@/app/api/chatbot/init/route"
 import { getDatabase } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
@@ -54,21 +55,32 @@ export async function POST(req: Request) {
       }
     }
 
-    // For simple embed widget, use generateText
-    const chatProvider = 'together'
-    const chatModel = togetherModels['llama-3.1-8b']
-    const result = await generateText({
-      model: together(chatModel),
-      system: systemPrompt,
-      prompt: userMessage,
-      maxTokens: 500,
-      temperature: 0.7,
-    })
-
-    const response = result.text?.trim() || "I'm sorry, I couldn't generate a response."
+    // Default: Gemini, Fallback: Together
+    let response = ""
+    let provider = "gemini"
+    let modelUsed = getGeminiModel()
+    try {
+      console.log(`🧪 Trying Gemini model: ${modelUsed}`)
+      const g = await generateWithGemini(systemPrompt, userMessage, { maxTokens: 500, temperature: 0.7 })
+      response = g.text
+      modelUsed = g.model
+    } catch (gemErr) {
+      console.warn("⚠️ Gemini failed, falling back to Together. Reason:", gemErr)
+      provider = "together"
+      const chatModel = togetherModels['llama-3.1-8b']
+      modelUsed = chatModel
+      const result = await generateText({
+        model: together(chatModel),
+        system: systemPrompt,
+        prompt: userMessage,
+        maxTokens: 500,
+        temperature: 0.7,
+      })
+      response = result.text?.trim() || "I'm sorry, I couldn't generate a response."
+    }
 
     console.log('✅ Generated response:', response.substring(0, 100) + '...')
-    console.log('🧠 LLM used:', { provider: chatProvider, model: chatModel })
+    console.log('🧠 LLM used:', { provider, model: modelUsed })
 
     // Save chat log to database
     try {
@@ -78,10 +90,11 @@ export async function POST(req: Request) {
       // Don't fail the response if logging fails
     }
 
-    return Response.json({ 
-      response,
-      timestamp: new Date().toISOString()
-    })
+  const body = { response, timestamp: new Date().toISOString() }
+  const res = Response.json(body)
+  res.headers.set('x-llm-provider', provider)
+  res.headers.set('x-llm-model', modelUsed)
+  return res
 
   } catch (error) {
     console.error("❌ Chat API error:", error)
