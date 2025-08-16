@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
+export const runtime = "nodejs"
 import { writeFile, mkdir } from "fs/promises"
 import path from "path"
-import { parseFile, chunkText } from "@/lib/file-parser"
+import { parseFile, parseFileFromBuffer, chunkText } from "@/lib/file-parser"
 import { addDocuments } from "@/lib/rag"
 import { getDatabase } from "@/lib/mongodb"
 
@@ -49,14 +50,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to persist uploaded file", step: "save" }, { status: 500 })
     }
 
-    // 4) Parse and chunk
-  let parsed
+    // 4) Parse and chunk – parse directly from the in-memory buffer to avoid any FS path issues
+    let parsed
     try {
-  parsed = await parseFile(filePath, originalName)
+      console.log("[upload] parseFileFromBuffer inputs", { originalName, size: buffer.length })
+      parsed = await parseFileFromBuffer(buffer, originalName)
     } catch (err: any) {
-      console.error("Failed to parse file:", err)
+      console.error("Failed to parse file from buffer:", err)
       return NextResponse.json(
-        { error: err?.message || "Failed to parse file", step: "parse" },
+        { error: err?.message || "Failed to parse file", step: "parse", method: "buffer" },
         { status: 400 },
       )
     }

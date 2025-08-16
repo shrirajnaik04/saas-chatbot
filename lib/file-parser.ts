@@ -13,7 +13,8 @@ export interface ParsedDocument {
 }
 
 export async function parseFile(filePath: string, filename: string): Promise<ParsedDocument> {
-  const ext = path.extname(filename).toLowerCase()
+  // Ensure we use the ext from the provided filename, but always read from filePath we just wrote
+  const ext = path.extname(filename || filePath).toLowerCase()
 
   switch (ext) {
     case ".pdf":
@@ -39,9 +40,67 @@ export async function parseFile(filePath: string, filename: string): Promise<Par
   }
 }
 
+// New: Parse directly from an in-memory Buffer to avoid any filesystem path issues
+export async function parseFileFromBuffer(data: Buffer, filename: string): Promise<ParsedDocument> {
+  const ext = path.extname(path.basename(filename || "")).toLowerCase()
+  switch (ext) {
+    case ".pdf": {
+      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js" as any)).default as any
+      const parsed = await pdfParse(data)
+      const content = parsed.text || ""
+      if (!content.trim()) throw new Error("No extractable text found in PDF")
+      return {
+        content,
+        metadata: {
+          filename,
+          type: "pdf",
+          pageCount: (parsed.numpages as number) || undefined,
+          wordCount: content.split(/\s+/).length,
+        },
+      }
+    }
+    case ".txt": {
+      const content = data.toString("utf-8")
+      if (!content.trim()) throw new Error("TXT file is empty")
+      return {
+        content,
+        metadata: {
+          filename,
+          type: "txt",
+          wordCount: content.split(/\s+/).length,
+        },
+      }
+    }
+    case ".csv": {
+      const raw = data.toString("utf-8")
+      const lines = raw.split("\n")
+      const headers = lines[0]?.split(",") || []
+      if (!headers.length) throw new Error("CSV appears to have no headers or content")
+      const textContent = lines
+        .slice(1)
+        .filter((line) => line.trim())
+        .map((line) => {
+          const values = line.split(",")
+          return headers.map((header, index) => `${header.trim()}: ${values[index]?.trim() || ""}`).join(", ")
+        })
+        .join("\n")
+      return {
+        content: `CSV Data:\nHeaders: ${headers.join(", ")}\n\n${textContent}`,
+        metadata: {
+          filename,
+          type: "csv",
+          wordCount: textContent.split(/\s+/).length,
+        },
+      }
+    }
+    default:
+      throw new Error(`Unsupported file type: ${ext}`)
+  }
+}
+
 async function parsePDF(filePath: string, filename: string): Promise<ParsedDocument> {
   const data = await fs.readFile(filePath)
-  const { default: pdfParse } = await import("pdf-parse")
+  const pdfParse = (await import("pdf-parse/lib/pdf-parse.js" as any)).default as any
   const parsed = await pdfParse(data)
   const content = parsed.text || ""
   if (!content.trim()) {

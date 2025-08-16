@@ -65,6 +65,7 @@
     "next-themes": "^0.4.4",
     "path": "latest",
     "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^4.10.38",
     "react": "^18",
     "react-day-picker": "8.10.1",
     "react-dom": "^18",
