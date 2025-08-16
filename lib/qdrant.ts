@@ -1,5 +1,7 @@
 import { QdrantClient } from "@qdrant/js-client-rest"
 import { createHash } from "crypto"
+import { getDatabase } from "./mongodb"
+import { ObjectId } from "mongodb"
 
 const QDRANT_URL = process.env.QDRANT_URL as string
 const QDRANT_API_KEY = process.env.QDRANT_API_KEY as string
@@ -32,6 +34,77 @@ export const qdrant = new QdrantClient({ url: QDRANT_URL, apiKey: QDRANT_API_KEY
 
 export function getTenantCollectionName(tenantId: string, dim?: number) {
   return dim ? `tenant_${tenantId}_docs_${dim}` : `tenant_${tenantId}_docs`
+}
+
+// Normalize a client name to lowercase with underscores
+export function normalizeClientName(name: string): string {
+  return (name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_") // non-alphanumerics to underscore
+    .replace(/^_+|_+$/g, "") // trim underscores
+    .replace(/_{2,}/g, "_") // collapse multiple underscores
+}
+
+// Normalize resource type (fallback to 'docs')
+export function normalizeResourceType(type: string): string {
+  const t = (type || "docs")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_{2,}/g, "_")
+  return t || "docs"
+}
+
+// Build collection name using convention: tenant_<clientName>_<resourceType>_<dimension>
+export function buildConventionalCollectionName(
+  clientName: string,
+  resourceType: string,
+  dimension: number,
+): string {
+  const client = normalizeClientName(clientName)
+  const resource = normalizeResourceType(resourceType)
+  const dim = Number(dimension)
+  if (!Number.isFinite(dim) || dim <= 0) {
+    throw new Error(`Invalid dimension: ${dimension}`)
+  }
+  return `tenant_${client}_${resource}_${dim}`
+}
+
+// Ensure a collection exists that follows the naming convention.
+// If it doesn't exist, create it with cosine distance and provided vector size.
+export async function ensureCollectionByConvention(
+  clientName: string,
+  resourceType: string,
+  dimension: number,
+): Promise<string> {
+  const client = getQdrantClient()
+  const name = buildConventionalCollectionName(clientName, resourceType, dimension)
+  try {
+    await client.getCollection(name)
+    console.log(`[qdrant] using existing collection: ${name}`)
+    return name
+  } catch {
+    // not found -> create
+  }
+  await client.createCollection(name, {
+    vectors: { size: Number(dimension), distance: "Cosine" },
+  })
+  console.log(`[qdrant] created collection: ${name}`)
+  return name
+}
+
+/**
+ * Convenience alias requested by spec.
+ * Example: createCollection("JK CargoCare", "docs", 768) => "tenant_jkcargocare_docs_768"
+ */
+export async function createCollection(
+  clientName: string,
+  resourceType: string,
+  dimension: number,
+): Promise<string> {
+  return ensureCollectionByConvention(clientName, resourceType, dimension)
 }
 
 // Ensure a collection exists that matches the desired dimension.
@@ -250,7 +323,10 @@ export async function upsertDocumentsToQdrant(
     throw new Error("No embeddings generated")
   }
   const dim = vectors[0].length
-  const collectionName = await ensureTenantCollection(tenantId, dim)
+  // Resolve client name from tenantId (fallback to tenantId itself), then use the new convention
+  const clientName = await resolveClientNameFromTenantId(tenantId)
+  const collectionName = await ensureCollectionByConvention(clientName, "docs", dim)
+  console.log(`[qdrant] upsert -> tenantId=${tenantId} clientName=${clientName} collection=${collectionName} dim=${dim}`)
 
   const points = docs.map((d, i) => ({
     id: isUuid(d.id) ? d.id : toUuidFromString(d.id),
@@ -284,7 +360,9 @@ export async function searchTenantContext(
   const client = getQdrantClient()
   const [queryVector] = await embedTexts([query])
   const dim = queryVector.length
-  const collectionName = await ensureTenantCollection(tenantId, dim)
+  const clientName = await resolveClientNameFromTenantId(tenantId)
+  const collectionName = await ensureCollectionByConvention(clientName, "docs", dim)
+  console.log(`[qdrant] search -> tenantId=${tenantId} clientName=${clientName} collection=${collectionName} dim=${dim}`)
 
   const res = await client.search(collectionName, {
     vector: queryVector,
@@ -299,4 +377,44 @@ export async function searchTenantContext(
     payload: r.payload,
   }))
   return { results }
+}
+
+// Resolve a human-friendly client name from tenantId using MongoDB; fallback to the id
+async function resolveClientNameFromTenantId(tenantId: string): Promise<string> {
+  try {
+    const db = await getDatabase()
+    if ((ObjectId as any).isValid?.(tenantId)) {
+      const row = await db
+        .collection("tenants")
+        .findOne({ _id: new ObjectId(tenantId) }, { projection: { name: 1 } })
+      if (row?.name) return String(row.name)
+    }
+  } catch {}
+  return tenantId
+}
+
+// Delete all doc collections for a tenant using the new (and legacy) conventions
+export async function deleteCollectionsByTenant(tenantId: string): Promise<void> {
+  const client = getQdrantClient()
+  const clientName = await resolveClientNameFromTenantId(tenantId)
+  const norm = normalizeClientName(clientName)
+  const prefixNew = `tenant_${norm}_docs_`
+  const legacy1 = `tenant_${tenantId}_docs`
+  const legacyPrefix = `tenant_${tenantId}_docs_`
+
+  try {
+    const collections: any = await (client as any).getCollections?.()
+    const names: string[] = collections?.collections?.map((c: any) => c.name) || []
+    const toDelete = names.filter((n) => n.startsWith(prefixNew) || n === legacy1 || n.startsWith(legacyPrefix))
+    for (const name of toDelete) {
+      try {
+        await client.deleteCollection(name)
+        console.log(`[qdrant] deleted collection: ${name}`)
+      } catch (e) {
+        console.warn(`[qdrant] failed to delete collection ${name}:`, e)
+      }
+    }
+  } catch (e) {
+    console.warn("[qdrant] getCollections failed:", e)
+  }
 }
