@@ -1,299 +1,269 @@
 # SaaS Chatbot Platform
 
-A comprehensive multi-tenant SaaS platform for deploying AI-powered chatbots with RAG (Retrieval-Augmented Generation) capabilities.
+A multi-tenant Next.js platform for AI chatbots with RAG (Retrieval-Augmented Generation), Qdrant vector search, and a clean, modern UI.
 
-## Features
+## Highlights
 
-### 🏢 Multi-Tenant Architecture
+- Multi-tenant admin and client portals
+- RAG pipeline with MongoDB + Qdrant
+- Default LLM: Gemini (fallback: Together)
+- Embeddings provider switchable via env (Gemini, Together, OpenAI)
+- Strict Qdrant collection naming convention per tenant and vector dimension
+- Optional on-disk file persistence
 
-- **Admin Portal**: Manage all tenants, view analytics, configure global settings
-- **Client Portal**: Individual dashboards for each tenant with full customization
-- **Isolated Data**: Each tenant's data is completely separated and secure
+## Tech Stack
 
-### 🤖 AI-Powered Chatbots
+- Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS
+- MongoDB (data), Qdrant (vectors via `@qdrant/js-client-rest`)
+- AI SDK (`ai`, `@ai-sdk/openai`) + custom Gemini REST integration
+- Shadcn UI components and Radix Primitives
 
-- **RAG Integration**: Upload documents (PDF, TXT, CSV) for contextual responses
-- **Vector Search**: Qdrant for efficient document retrieval
-- **Streaming Responses**: Real-time chat experience with Together.ai API
-- **Customizable**: Brand colors, welcome messages, bot names
+## Repository Structure
 
-### 📊 Analytics & Management
-
-- **Chat Logs**: Track all conversations with RAG usage indicators
-- **Document Management**: Upload, process, and manage knowledge base files
-- **Usage Analytics**: Monitor chat volume, document usage, and performance
-- **Token Management**: Secure API tokens with regeneration capabilities
-
-### 🎨 Professional UI
-
-- **Tailwind CSS**: Modern, responsive design
-- **Drag & Drop**: Intuitive file upload interface
-- **Real-time Updates**: Live progress indicators and notifications
-- **Mobile Friendly**: Optimized for all device sizes
-
-## Quick Start
-
-### Prerequisites
-
-1. **Node.js 18+** and **pnpm**
-2. **MongoDB** (local or cloud)
-3. **Qdrant** (cloud or local)
-4. **Together.ai API key**
-
-### Installation
-
-1. **Clone and install dependencies:**
-   \`\`\`bash
-   git clone <repository-url>
-   cd saas-chatbot-platform
-   pnpm install
-   \`\`\`
-
-2. **Set up environment variables:**
-   \`\`\`bash
-   cp .env.example .env
-
-````
-
-Edit `.env` with your configuration:
-```env
-# See SECURITY.md for detailed setup instructions
-TOGETHER_API_KEY=your_together_api_key_here
-MONGODB_URI=your_mongodb_connection_string_here
-JWT_SECRET=your_jwt_secret_here
-EMBED_JWT_SECRET=your_embed_jwt_secret_here
-NEXTAUTH_URL=http://localhost:3000
-````
-
-⚠️ **Security Notice**: Never commit real credentials. See `SECURITY.md` for detailed security guidelines.
-\`\`\`
-
-Edit `.env` with your additional configuration as needed:
-
-```env
-TOGETHER_API_KEY=your_together_api_key_here
-MONGODB_URI=mongodb://localhost:27017/chatbot_saas
-NEXT_PUBLIC_ADMIN_USERNAME=admin
-NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password_here
-JWT_SECRET=your_jwt_secret_here
-EMBED_JWT_SECRET=your_embed_secret_here
-QDRANT_URL=https://YOUR-QDRANT-URL
-QDRANT_API_KEY=your_qdrant_api_key_here
+```
+app/
+   admin/
+   api/
+      auth/
+         login/
+         verify/
+      chat/
+      chat-logs/
+      chatbot/
+         init/
+      tenants/
+      upload/
+   client/
+   demo/
+   embed/
+components/
+   theme-provider.tsx
+   ui/  (buttons, inputs, dialogs, table, etc.)
+hooks/
+lib/
+   auth.ts
+   file-parser.ts
+   mongodb.ts
+   rag.ts
+   qdrant.ts
+   together.ts
+   gemini.ts
+public/
+styles/
 ```
 
-3. **Start MongoDB:**
-   \`\`\`bash
+## Setup
 
-# Using Docker
+Prerequisites
 
-docker run -d -p 27017:27017 --name mongodb mongo:latest
+- Node.js 18+, pnpm
+- MongoDB (local/Atlas)
+- Qdrant (Cloud or Docker/local)
+- API keys as applicable: GEMINI_API_KEY (recommended), TOGETHER_API_KEY (fallback), OPENAI_API_KEY (optional for embeddings)
 
-# Or install locally
+Install
 
-# macOS: brew install mongodb-community
+```bash
+pnpm install
+```
 
-# Ubuntu: sudo apt install mongodb
+Environment (.env)
 
-\`\`\`
+```env
+# Core
+MONGODB_URI=mongodb://localhost:27017/chatbot_saas
+JWT_SECRET=replace_me
+EMBED_JWT_SECRET=replace_me
+NEXT_PUBLIC_ADMIN_USERNAME=admin
+NEXT_PUBLIC_ADMIN_PASSWORD=change_me
 
-4. **Connect Qdrant:**
-   \`\`\`bash
+# Qdrant
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=
 
-# Use Qdrant Cloud or run locally with Docker
+# Uploads
+PERSIST_UPLOADS=false
+MAX_FILE_SIZE=10485760
 
-docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+# Embeddings provider (gemini | openai | together)
+AI_PROVIDER=gemini
+# Optional embedding model hints (used mainly for Together/OpenAI discovery)
+EMBEDDING_MODEL=
+EMBEDDING_CANDIDATES=
 
-# Then set QDRANT_URL=http://localhost:6333 in .env
+# Chat LLM (Gemini default)
+GEMINI_API_KEY=
+AI_CHAT_MODEL=gemini-1.5-flash
 
-\`\`\`
+# Fallback provider (Together) and optional OpenAI (if you switch)
+TOGETHER_API_KEY=
+OPENAI_API_KEY=
+```
 
-5. **Run the application:**
-   \`\`\`bash
-   pnpm dev
-   \`\`\`
+Run
 
-Visit `http://localhost:3000` to access the platform.
+```bash
+pnpm dev
+```
 
-## Usage Guide
+## Key Behaviors
 
-### Admin Portal (`/admin`)
+### 1) Qdrant Collection Naming Convention
 
-- **Login**: Use credentials from `.env` (NEXT_PUBLIC_ADMIN_USERNAME/NEXT_PUBLIC_ADMIN_PASSWORD)
-- **Tenant Management**: Create, suspend, or delete client accounts
-- **Global Settings**: Configure platform-wide defaults
-- **Analytics**: View usage statistics across all tenants
+Pattern: `tenant_<clientName>_<resourceType>_<dimension>`
 
-### Client Portal (`/client`)
+- clientName: lowercased, non-alphanumerics → underscore, collapsed underscores
+- resourceType: docs | faqs | chats | profiles | ... (normalized like clientName)
+- dimension: embedding vector size (e.g., 768, 1024)
 
-- **Login**: Use tenant credentials (demo: any email/password)
-- **Knowledge Base**: Upload and manage documents
-- **Customization**: Configure chatbot appearance and behavior
-- **Embed Code**: Get script tag for website integration
-- **Analytics**: View chat logs and usage statistics
+Implemented helpers (in `lib/qdrant.ts`):
 
-### Embedding Chatbots
+- `normalizeClientName(name)`
+- `normalizeResourceType(type)`
+- `buildConventionalCollectionName(clientName, resourceType, dimension)`
+- `ensureCollectionByConvention(clientName, resourceType, dimension)`
+- `createCollection(clientName, resourceType, dimension)`
 
-Add this script to any website:
-\`\`\`html
+Upload/search flows resolve the tenant’s display name from MongoDB and use the convention (resourceType="docs"). Logs show the actual collection name used.
 
-<script src="https://yourdomain.com/embed.js?token=YOUR_API_TOKEN" defer></script>
+### 2) Embeddings Provider Switching
 
-\`\`\`
+- Controlled by `AI_PROVIDER` env: `gemini` | `openai` | `together`
+- Auto-detects embedding dimension from the chosen provider/model
+- Together path tries multiple candidates (configurable via `EMBEDDING_MODEL`, `EMBEDDING_CANDIDATES`) and gracefully handles unavailable models
 
-The chatbot will appear as a floating button in the bottom-right corner.
+### 3) LLM Selection (Chat Responses)
 
-## Architecture
+- Default: Gemini (`GEMINI_API_KEY`, `AI_CHAT_MODEL`, defaults to `gemini-1.5-flash`)
+- Fallback: Together (OpenAI-compatible) when Gemini fails
+- Response includes headers `x-llm-provider` and `x-llm-model` for observability
 
-### Tech Stack
+### 4) Uploads
 
-- **Frontend**: Next.js 14, React, Tailwind CSS
-- **Backend**: Next.js API Routes, Node.js
-- **Database**: MongoDB (tenant data, documents, logs)
-- **Vector DB**: Qdrant (document embeddings)
-- **AI**: Together.ai API (LLM responses)
-- **Auth**: JWT tokens, bcrypt hashing
+- Files parsed from memory buffer (no path dependency); PDF/TXT supported
+- Local file persistence toggle via `PERSIST_UPLOADS`
+- Basic deduplication by tenant + filename + size
 
-### File Structure
+### 5) How RAG Works (Step-by-step)
 
-\`\`\`
-├── app/
-│ ├── admin/ # Admin portal pages
-│ ├── client/ # Client portal pages
-│ ├── api/ # API routes
-│ │ ├── chat/ # Chat endpoint
-│ │ ├── upload/ # File upload
-│ │ ├── tenants/ # Tenant management
-│ │ └── embed/ # Widget script
-│ └── embed/ # Embeddable widget
-├── lib/
-│ ├── mongodb.ts # Database connection
-│ ├── auth.ts # Authentication utilities
-│ ├── rag.ts # RAG/vector operations
-│ └── file-parser.ts # Document processing
-├── components/ui/ # Reusable UI components
-└── uploads/ # File storage (per tenant)
-\`\`\`
+1. Upload: A tenant uploads a file via `POST /api/upload`.
+   - The API reads the file into memory, parses text (`lib/file-parser.ts`), and splits it into chunks.
+   - Each chunk is embedded using the configured provider (`AI_PROVIDER`).
+2. Vector Store: Embeddings are upserted to Qdrant with normalized IDs.
+   - Collection name follows `tenant_<clientName>_docs_<dimension>` and is created if missing.
+   - A MongoDB `documents` record tracks status and the Qdrant point IDs.
+3. Chat: On `POST /api/chat`, the user query is embedded (same provider) and searched against the tenant’s collection in Qdrant.
+4. Context + LLM: Top matches are concatenated and prefixed to the system prompt.
+   - The message is sent to the LLM (Gemini by default; Together on fallback).
+5. Response + Logging: The answer is returned and a chat log is written to MongoDB.
 
-### Data Flow
+Example
 
-1. **Document Upload**: Files → Parser → Chunks → Embeddings → Qdrant + MongoDB
-2. **Chat Request**: User message → RAG search → LLM + context → Streamed response
-3. **Widget Integration**: Script tag → API token → Tenant config → Chat interface
+Suppose tenant “JK CargoCare” uploads a PDF with company FAQs.
 
-## Development
+- Chunks are embedded (e.g., 768-dim). Qdrant collection becomes `tenant_jkcargocare_docs_768`.
+- A user asks: “What are your delivery timelines?”
+- We embed the question and search Qdrant; best-matching chunks about delivery timelines are fetched.
+- The chat route builds a system prompt with those chunks as context and asks the LLM.
+- The LLM responds using the provided context; the reply is saved to `chat_logs` with `ragUsed: true`.
 
-### Adding New File Types
+## API Endpoints (App Router)
 
-Extend `lib/file-parser.ts`:
-\`\`\`typescript
-case '.docx':
-return parseDocx(filePath, filename)
-\`\`\`
+- `POST /api/chat` — Chat with optional RAG context
 
-### Custom AI Models
+  - Auth: Bearer embed token (see `/api/chatbot/init`)
+  - Returns: `{ response, timestamp }` + headers `x-llm-provider`, `x-llm-model`
 
-Modify `app/api/chat/route.ts`:
-\`\`\`typescript
-const result = streamText({
-model: openai('gpt-4-turbo'), // Change model here
-// ... other options
-})
-\`\`\`
+- `POST /api/upload` — Upload a document for a tenant
 
-### Database Schema
+  - FormData: `file`, `tenantId`
+  - Creates document record, chunks, embeds, and upserts into Qdrant
 
-**Tenants Collection:**
-\`\`\`javascript
+- `GET /api/chat-logs` — Returns chat logs (per tenant; implementation in repo)
+
+- `POST /api/chatbot/init` — Issues short-lived embed token after domain/tenant validation
+
+- `GET|POST|PUT|DELETE /api/tenants` — Manage tenants
+
+## Data Model (MongoDB)
+
+Tenants
+
+```json
 {
-\_id: ObjectId,
-name: String,
-email: String,
-password: String, // hashed
-apiToken: String,
-status: 'active' | 'suspended',
-ragEnabled: Boolean,
-config: {
-botName: String,
-welcomeMessage: String,
-primaryColor: String
-},
-createdAt: Date,
-updatedAt: Date
+   "_id": ObjectId,
+   "name": String,
+   "email": String,
+   "password": String,  // hashed
+   "apiToken": String,
+   "status": "active" | "suspended",
+   "ragEnabled": Boolean,
+   "allowedDomains": [String],
+   "config": {
+      "botName": String,
+      "welcomeMessage": String,
+      "primaryColor": String,
+      "secondaryColor": String,
+      "companyName": String
+   },
+   "createdAt": Date,
+   "updatedAt": Date
 }
-\`\`\`
+```
 
-**Documents Collection:**
-\`\`\`javascript
+Documents
+
+```json
 {
-\_id: ObjectId,
-tenantId: String,
-filename: String,
-filePath: String,
-size: Number,
-type: String,
-status: 'processing' | 'ready' | 'error',
-uploadedAt: Date,
-chunkCount: Number
+   "_id": ObjectId,
+   "tenantId": String,
+   "filename": String,
+   "filePath": String?,
+   "size": Number,
+   "type": String,
+   "status": "processing" | "ready" | "error",
+   "uploadedAt": Date,
+   "chunkCount": Number,
+   "pointIds": [String]
 }
-\`\`\`
+```
 
-## Deployment
+Chat Logs
 
-### Production Setup
+```json
+{
+   "_id": ObjectId,
+   "tenantId": String,
+   "message": String,
+   "response": String,
+   "timestamp": Date,
+   "ragUsed": Boolean
+}
+```
 
-1. **Environment**: Set production environment variables
-2. **Database**: Use MongoDB Atlas or dedicated server
-3. **Vector DB**: Use Qdrant Cloud or deploy Qdrant with persistent storage
-4. **CDN**: Configure for static assets and uploads
-5. **SSL**: Enable HTTPS for secure widget embedding
+## Troubleshooting
 
-### Scaling Considerations
+- Gemini always falls back to Together
 
-- **Load Balancing**: Multiple Next.js instances
-- **Database Sharding**: Partition by tenant
-- **Caching**: Redis for session and response caching
-- **File Storage**: S3 or similar for document uploads
+  - Ensure `GEMINI_API_KEY` is set and valid
+  - Verify `AI_CHAT_MODEL` is a supported Gemini model (e.g., `gemini-1.5-flash`)
+  - Check server logs for: `⚠️ Gemini failed, falling back to Together. Reason: ...`
+
+- Qdrant shows unexpected collection names
+
+  - Naming is now `tenant_<clientName>_<resourceType>_<dimension>`
+  - Client name is derived from the tenants collection; ensure the tenant has a proper name
+
+- Upload returns ENOENT or parse errors
+  - Files are parsed from in-memory buffer; ensure the uploaded file is valid
+  - Increase `MAX_FILE_SIZE` if needed
 
 ## Security
 
-- **JWT Authentication**: Secure token-based auth
-- **Input Validation**: All user inputs sanitized
-- **File Upload Limits**: Size and type restrictions
-- **Rate Limiting**: Prevent API abuse
-- **CORS Configuration**: Secure cross-origin requests
-
-## Support
-
-For issues and questions:
-
-1. Check the troubleshooting section below
-2. Review API documentation
-3. Open an issue on GitHub
-
-### Troubleshooting
-
-**MongoDB Connection Issues:**
-
-```bash
-
-# Check if MongoDB is running
-
-mongosh --eval "db.adminCommand('ismaster')"
-```
-
-**Qdrant Connection Issues:**
-
-```bash
-# Test Qdrant endpoint
-curl http://localhost:6333/collections
-```
-
-**File Upload Errors:**
-
-- Check file size limits in `.env`
-- Verify upload directory permissions
-- Ensure supported file types
+- Do not commit real credentials; keep `.env` local
+- Rotate API keys as needed
+- JWT secrets should be long/strong in production
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT — see `LICENSE` (or your chosen license).
