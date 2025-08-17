@@ -11,6 +11,8 @@ A multi-tenant Next.js platform for AI chatbots with RAG (Retrieval-Augmented Ge
 - Strict Qdrant collection naming convention per tenant and vector dimension
 - Optional on-disk file persistence
 
+Companion tool: see public/tenant-tester.html (documented below) to preview tenant-specific chatbot branding and behavior.
+
 ## Tech Stack
 
 - Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS
@@ -87,7 +89,11 @@ MAX_FILE_SIZE=10485760
 
 # Embeddings provider (gemini | openai | together)
 AI_PROVIDER=gemini
-# Optional embedding model hints (used mainly for Together/OpenAI discovery)
+# Embedding model settings
+# - For Gemini embeddings, set AI_MODEL to a Gemini embedding model (e.g., embedding-001)
+# - For Together/OpenAI, you can also set EMBEDDING_MODEL or EMBEDDING_CANDIDATES
+#   to guide model selection.
+AI_MODEL=
 EMBEDDING_MODEL=
 EMBEDDING_CANDIDATES=
 
@@ -267,3 +273,73 @@ Chat Logs
 ## License
 
 MIT — see `LICENSE` (or your chosen license).
+
+---
+
+## Tenant Tester (public/tenant-tester.html)
+
+Non-technical explanation
+
+- This page lets you switch between tenants and immediately see how the chatbot changes its name, colors, and welcome message.
+- Pick a tenant card or paste a tenant ID. The chatbot bubble appears at the bottom-right; click it and chat.
+
+Technical explanation
+
+- The page loads tenants from `GET /api/tenants`, then calls `POST /api/chatbot/init` with the selected `tenantId` and the current domain.
+- The init route returns a short-lived JWT and a config object (botName, colors, welcomeMessage, etc.).
+- The page injects `/embed`, which builds the widget UI and uses the JWT to call `POST /api/chat`.
+- When you switch tenants, the tester updates a `<meta name="chatbot-tenant-id" content="...">` tag and reloads `/embed` to reflect new branding.
+
+Quick example
+
+1. Open `/tenant-tester.html` in your browser while the dev server runs.
+2. Click a tenant named "ACME Corp".
+3. The chat button color changes to ACME’s primary/secondary colors. The header shows "ACME Assistant".
+4. Type a question; the message is sent to `/api/chat` with the tenant’s JWT. If RAG is enabled, the answer includes the tenant’s document context.
+
+Notes
+
+- For local development, any domain checks allow `localhost`. In production, configure `allowedDomains` per tenant.
+- The tester forcibly positions the widget at bottom-right, overriding styles to keep it visible.
+
+## How tenants configure chatbots
+
+Non-technical
+
+- Each customer (tenant) has their own chatbot settings: name, welcome message, and brand colors.
+- They can upload PDFs/TXT/CSV with their content. The system reads these files to answer questions (RAG).
+- The chatbot will only work on websites you authorize (your domain list), and you’ll get a small script to embed it.
+
+Technical
+
+- Tenants are stored in MongoDB (`tenants` collection). Key fields:
+  - `status` (active/suspended), `allowedDomains` (array of domains), and `config` (botName, welcomeMessage, primaryColor, secondaryColor, companyName), plus `ragEnabled`.
+- The embed initializes via `POST /api/chatbot/init` with `tenantId` and `domain`. It returns a JWT (2h expiry) with tenantId and config claims. `/app/embed/route.ts` uses that to render a simple chat UI and send messages to `/api/chat`.
+- Uploads via `POST /api/upload` parse files and upsert vectors into Qdrant using a per-tenant collection named with the convention `tenant_<clientName>_docs_<dimension>` where `<clientName>` comes from the tenant record, and `<dimension>` is inferred from the embedding model.
+- Chats via `POST /api/chat` validate the JWT, optionally fetch top-K relevant chunks with `searchTenantContext`, and call Gemini by default (fallback to Together). Response includes `x-llm-provider`/`x-llm-model` headers.
+
+Branding: color and content
+
+- The embed script styles the launcher, header, and send button using the tenant’s `primaryColor` and `secondaryColor`.
+- The header shows `config.botName`. The first message is `config.welcomeMessage`.
+- Changing tenant config (name/colors/welcome) will reflect on the next init/script reload.
+
+Embedding on your site (basic)
+
+Add this to your HTML and replace TENANT_ID with your tenant’s ID:
+
+```html
+<meta name="chatbot-tenant-id" content="TENANT_ID" />
+<script src="/embed" defer></script>
+```
+
+The script will request a JWT from your server for the current `window.location.hostname`. Ensure your tenant contains that domain in `allowedDomains` in production.
+
+Supported upload types
+
+- PDF (.pdf), Text (.txt), CSV (.csv). Files are parsed in-memory; size limit is `MAX_FILE_SIZE` (default 10 MB).
+
+Environment tips for embeddings
+
+- Gemini embeddings require: `AI_PROVIDER=gemini` and `AI_MODEL=embedding-001` (or another Gemini embedding model).
+- OpenAI/Together embeddings can be guided with `EMBEDDING_MODEL` and/or `EMBEDDING_CANDIDATES`.
